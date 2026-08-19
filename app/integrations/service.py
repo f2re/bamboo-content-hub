@@ -10,7 +10,8 @@ from ..models import IntegrationAccount
 from ..oauth import valid_access_token
 from ..security import CredentialCipher
 from .base import PublishError, PublishRequest
-from .connectors import CONNECTORS, credential_provider
+from .connectors import credential_provider
+from .registry import CONNECTORS
 
 OAUTH_PROVIDERS = {"meta", "google", "pinterest", "tiktok", "vk"}
 
