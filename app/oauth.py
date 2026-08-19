@@ -50,7 +50,7 @@ def provider_registry(settings: Settings) -> dict[str, OAuthProvider]:
             token_url="https://api.pinterest.com/v5/oauth/token",
             client_id=settings.pinterest_client_id,
             client_secret=settings.pinterest_client_secret,
-            scopes=("boards:read", "pins:read", "pins:write"),
+            scopes=("boards:read", "boards:write", "pins:read", "pins:write"),
             use_pkce=False,
             token_auth="basic",
             scope_separator=",",
@@ -74,7 +74,13 @@ def provider_registry(settings: Settings) -> dict[str, OAuthProvider]:
             token_url=settings.meta_token_url,
             client_id=settings.meta_client_id,
             client_secret=settings.meta_client_secret,
-            scopes=("instagram_business_basic", "instagram_business_content_publish", "pages_show_list", "pages_manage_posts"),
+            scopes=(
+                "instagram_basic",
+                "instagram_content_publish",
+                "pages_show_list",
+                "pages_read_engagement",
+                "pages_manage_posts",
+            ),
             use_pkce=False,
             scope_separator=",",
         ),
@@ -186,9 +192,13 @@ async def exchange_code(db: Session, settings: Settings, provider_name: str, cod
     if not account:
         account = IntegrationAccount(provider=provider_name, account_key="default")
         db.add(account)
+    credentials = {}
+    if account.encrypted_credentials:
+        credentials = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
+    credentials.update(token)
     account.status = "connected"
     account.scopes = list(scopes)
-    account.encrypted_credentials = CredentialCipher(settings).encrypt_json(token)
+    account.encrypted_credentials = CredentialCipher(settings).encrypt_json(credentials)
     account.expires_at = expires_at
     account.last_checked_at = datetime.now(UTC)
     db.commit()
@@ -259,7 +269,21 @@ async def revoke_account(db: Session, settings: Settings, provider_name: str, cl
         finally:
             if owned_client:
                 await client.aclose()
-    account.encrypted_credentials = None
-    account.status = "disconnected"
+    preserved = {
+        key: value
+        for key, value in credentials.items()
+        if key not in {
+            "access_token",
+            "refresh_token",
+            "id_token",
+            "token_type",
+            "expires_in",
+            "scope",
+            "refresh_token_expires_in",
+            "open_id",
+        }
+    }
+    account.encrypted_credentials = CredentialCipher(settings).encrypt_json(preserved) if preserved else None
+    account.status = "configured" if preserved else "disconnected"
     account.expires_at = None
     db.commit()
