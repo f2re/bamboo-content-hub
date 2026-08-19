@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from .security import CredentialCipher, safe_media_path, sign_media_token
 from .services import claim_delivery, retry_delay
 
 OAUTH_PROVIDERS = {"meta", "google", "pinterest", "tiktok", "vk"}
+MAX_STATUS_POLLS = 20
 
 
 def channel_text(publication: Publication, channel: str) -> str:
@@ -94,6 +95,17 @@ def _schedule_retry(delivery: Delivery) -> None:
         delivery.next_attempt_at = datetime.now(UTC) + retry_delay(delivery.attempt_count)
 
 
+def _schedule_status_poll(delivery: Delivery, seconds: int, message: str | None = None) -> None:
+    if delivery.attempt_count >= MAX_STATUS_POLLS:
+        delivery.status = DeliveryStatus.failed.value
+        delivery.last_error = message or "Площадка слишком долго не подтверждает публикацию"
+        delivery.next_attempt_at = None
+        return
+    delivery.status = DeliveryStatus.processing.value
+    delivery.last_error = message
+    delivery.next_attempt_at = datetime.now(UTC) + timedelta(seconds=max(5, seconds))
+
+
 async def process_delivery(db: Session, settings: Settings, delivery: Delivery) -> bool:
     if delivery.status in (DeliveryStatus.published.value, DeliveryStatus.manual_action.value):
         return False
@@ -125,27 +137,56 @@ async def process_delivery(db: Session, settings: Settings, delivery: Delivery) 
         errors = connector.validate(request)
         if errors:
             raise PermanentPublishError("; ".join(errors))
-        result = await connector.publish(request)
-        if result.manual_action:
-            delivery.status = DeliveryStatus.manual_action.value
-            delivery.last_error = result.message
+
+        if delivery.external_post_id:
+            status = await connector.status(request, delivery.external_post_id)
+            if status.state == "published":
+                delivery.status = DeliveryStatus.published.value
+                delivery.external_url = status.external_url or delivery.external_url
+                delivery.published_at = delivery.published_at or datetime.now(UTC)
+                delivery.last_error = None
+                delivery.next_attempt_at = None
+            elif status.state == "failed":
+                delivery.status = DeliveryStatus.failed.value
+                delivery.last_error = status.message or "Площадка отклонила публикацию"
+                delivery.next_attempt_at = None
+            else:
+                _schedule_status_poll(delivery, status.poll_after_seconds, status.message or None)
         else:
-            delivery.status = DeliveryStatus.published.value
-            delivery.external_post_id = result.external_post_id
-            delivery.external_url = result.external_url
-            delivery.published_at = datetime.now(UTC)
-            delivery.last_error = None
-        delivery.next_attempt_at = None
+            result = await connector.publish(request)
+            if result.manual_action:
+                delivery.status = DeliveryStatus.manual_action.value
+                delivery.last_error = result.message
+                delivery.next_attempt_at = None
+            elif result.processing:
+                if not result.external_post_id:
+                    raise PermanentPublishError("Площадка приняла публикацию без идентификатора статуса")
+                delivery.external_post_id = result.external_post_id
+                delivery.external_url = result.external_url
+                _schedule_status_poll(delivery, result.poll_after_seconds, result.message)
+            else:
+                delivery.status = DeliveryStatus.published.value
+                delivery.external_post_id = result.external_post_id
+                delivery.external_url = result.external_url
+                delivery.published_at = datetime.now(UTC)
+                delivery.last_error = None
+                delivery.next_attempt_at = None
     except PermanentPublishError as exc:
         delivery.last_error = str(exc)[:1500]
         delivery.status = DeliveryStatus.failed.value
         delivery.next_attempt_at = None
     except TransientPublishError as exc:
         delivery.last_error = str(exc)[:1500]
-        _schedule_retry(delivery)
+        if delivery.external_post_id:
+            _schedule_status_poll(delivery, 30, delivery.last_error)
+        else:
+            _schedule_retry(delivery)
     except Exception as exc:
         delivery.last_error = f"{type(exc).__name__}: {exc}"[:1500]
-        _schedule_retry(delivery)
+        if delivery.external_post_id:
+            _schedule_status_poll(delivery, 30, delivery.last_error)
+        else:
+            _schedule_retry(delivery)
     db.commit()
     _update_publication_status(db, publication)
     return True
