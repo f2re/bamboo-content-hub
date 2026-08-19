@@ -132,6 +132,7 @@ class TikTokConnector:
             requires_public_media=True,
             notes=(
                 "Privacy level must be explicitly selected from the creator's current options.",
+                "Commercial-content declarations and direct-post consent are required.",
                 "Unaudited TikTok clients are restricted by TikTok to private visibility.",
             ),
         )
@@ -142,6 +143,12 @@ class TikTokConnector:
             errors.append("TikTok не подключён: отсутствует access token")
         if not str(request.config.get("privacy_level") or "").strip():
             errors.append("Выберите privacy_level TikTok перед публикацией")
+        if "brand_content_toggle" not in request.config:
+            errors.append("Укажите, является ли публикация платным партнёрством TikTok")
+        if "brand_organic_toggle" not in request.config:
+            errors.append("Укажите, продвигает ли публикация собственный бизнес автора")
+        if request.content.get("direct_post_consent") is not True:
+            errors.append("Для TikTok требуется явное согласие пользователя на Direct Post")
         if not request.media:
             errors.append("TikTok: выберите видео или фотографии")
             return errors
@@ -188,7 +195,7 @@ class TikTokConnector:
             raise PermanentPublishError(
                 "Выбранный privacy_level TikTok больше недоступен; обновите настройки подключения"
             )
-        return {
+        post_info = {
             "privacy_level": privacy,
             "disable_comment": bool(request.config.get("disable_comment"))
             or bool(creator.get("comment_disabled")),
@@ -196,7 +203,12 @@ class TikTokConnector:
             or bool(creator.get("duet_disabled")),
             "disable_stitch": bool(request.config.get("disable_stitch"))
             or bool(creator.get("stitch_disabled")),
+            "brand_content_toggle": bool(request.config.get("brand_content_toggle")),
+            "brand_organic_toggle": bool(request.config.get("brand_organic_toggle")),
         }
+        if "is_aigc" in request.config:
+            post_info["is_aigc"] = bool(request.config.get("is_aigc"))
+        return post_info
 
     async def health(
         self,
