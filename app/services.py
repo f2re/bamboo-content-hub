@@ -13,18 +13,17 @@ from sqlalchemy.orm import Session
 from .ai_pack import BambooContentPack, deep_fill
 from .config import Settings
 from .models import Delivery, DeliveryStatus, MediaAsset, Product, Publication, PublicationStatus
-from .security import safe_media_path
+from .security import detect_media_mime, safe_media_extension, safe_media_path
 
 
 async def save_upload(db: Session, settings: Settings, product: Product, upload: UploadFile, sort_order: int) -> MediaAsset:
     content = await upload.read(settings.max_upload_bytes + 1)
     if len(content) > settings.max_upload_bytes:
         raise ValueError("file exceeds upload limit")
-    mime = upload.content_type or "application/octet-stream"
-    if not (mime.startswith("image/") or mime.startswith("video/")):
-        raise ValueError("only image and video uploads are allowed")
-    suffix = Path(upload.filename or "upload").suffix.lower()[:12]
-    stored = f"{secrets.token_hex(16)}{suffix}"
+    mime = detect_media_mime(content)
+    if mime is None:
+        raise ValueError("unsupported or unsafe media file")
+    stored = f"{secrets.token_hex(16)}{safe_media_extension(mime)}"
     path = safe_media_path(settings.media_dir, stored)
     path.write_bytes(content)
     asset = MediaAsset(
