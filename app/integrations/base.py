@@ -68,6 +68,7 @@ class PublishStatus:
     state: Literal["published", "processing", "failed", "unknown"]
     message: str = ""
     external_url: str | None = None
+    poll_after_seconds: int = 20
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,8 @@ class PublishResult:
     external_post_id: str | None = None
     external_url: str | None = None
     manual_action: bool = False
+    processing: bool = False
+    poll_after_seconds: int = 20
     message: str | None = None
 
 
