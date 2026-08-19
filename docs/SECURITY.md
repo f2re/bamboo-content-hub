@@ -7,7 +7,7 @@
 Для доступа через reverse proxy/Интернет:
 
 1. задайте внешний `APP_BASE_URL=https://...`;
-2. выполните `./scripts/set-admin-password.sh`;
+2. выполните `bash scripts/set-admin-password.sh`;
 3. убедитесь, что `SECRET_KEY` и отдельный `MASTER_KEY` случайные и длиннее 32 символов;
 4. установите `TRUSTED_LAN=false` и перезапустите сервис.
 
@@ -17,6 +17,7 @@
 
 - пароль хранится только как Argon2 hash (`ADMIN_PASSWORD_HASH`);
 - сессия подписана HMAC, HttpOnly, SameSite=Strict и получает Secure flag при HTTPS;
+- смена Argon2 hash автоматически делает ранее выданные сессии недействительными;
 - POST/PUT/PATCH/DELETE требуют same-origin `Origin`/`Referer` либо CSRF token;
 - JavaScript API-вызовы автоматически передают `X-CSRF-Token`;
 - login/OAuth/webhook endpoints имеют per-process rate limits;
