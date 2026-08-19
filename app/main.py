@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -23,10 +24,25 @@ from .models import DeliveryStatus, IntegrationAccount, MediaAsset, Product, Pub
 from .oauth import begin_oauth, exchange_code, refresh_account, revoke_account
 from .publisher import process_delivery
 from .security import CredentialCipher, safe_media_path, sign_media_token, verify_media_token
-from .services import apply_ai_pack, create_publication, due_deliveries, save_upload
+from .services import (
+    apply_ai_pack,
+    create_publication,
+    due_deliveries,
+    format_local_datetime,
+    parse_local_datetime,
+    save_upload,
+)
 
 settings = get_settings()
 templates = Jinja2Templates(directory="templates")
+logger = logging.getLogger("bamboo.scheduler")
+
+
+def _local_datetime(value: datetime | None) -> str:
+    return format_local_datetime(value, settings.app_timezone)
+
+
+templates.env.filters["local_datetime"] = _local_datetime
 
 
 async def scheduler_loop() -> None:
@@ -34,9 +50,16 @@ async def scheduler_loop() -> None:
         try:
             with SessionLocal() as db:
                 for delivery in due_deliveries(db):
-                    await process_delivery(db, settings, delivery)
+                    try:
+                        await process_delivery(db, settings, delivery)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception("Delivery processing failed", extra={"delivery_id": delivery.id})
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            pass
+            logger.exception("Scheduler iteration failed")
         await asyncio.sleep(settings.scheduler_interval_seconds)
 
 
@@ -166,7 +189,10 @@ def publication_create(
     db: Session = Depends(get_db),
 ):
     product = product_or_404(db, product_id)
-    when = datetime.fromisoformat(scheduled_at).replace(tzinfo=UTC) if scheduled_at else None
+    try:
+        when = parse_local_datetime(scheduled_at, settings.app_timezone)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     publication = create_publication(db, product, channels or ["demo"], media_ids, when)
     if action == "publish":
         publication.status = PublicationStatus.scheduled.value
@@ -182,9 +208,17 @@ async def publication_publish(publication_id: str, db: Session = Depends(get_db)
         raise HTTPException(404)
     publication.status = PublicationStatus.scheduled.value
     publication.scheduled_at = datetime.now(UTC)
+    for delivery in publication.deliveries:
+        if delivery.status == DeliveryStatus.failed.value:
+            delivery.status = DeliveryStatus.pending.value
+            delivery.next_attempt_at = None
     db.commit()
     for delivery in publication.deliveries:
-        if delivery.status in (DeliveryStatus.pending.value, DeliveryStatus.retry_wait.value):
+        if delivery.status in (
+            DeliveryStatus.pending.value,
+            DeliveryStatus.retry_wait.value,
+            DeliveryStatus.processing.value,
+        ):
             await process_delivery(db, settings, delivery)
     return {"ok": True}
 
