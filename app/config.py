@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,6 +13,7 @@ class Settings(BaseSettings):
 
     app_name: str = "Bamboo Content Hub"
     app_base_url: str = "http://localhost:8080"
+    app_timezone: str = "Europe/Helsinki"
     database_url: str = "sqlite:///./data/bamboo.db"
     data_dir: Path = Path("./data")
     media_dir: Path = Path("./data/media")
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
     trusted_lan: bool = True
     scheduler_enabled: bool = True
     scheduler_interval_seconds: int = 10
+    delivery_lease_seconds: int = 300
     signed_media_ttl_seconds: int = 1800
     max_upload_bytes: int = 100 * 1024 * 1024
 
@@ -41,6 +44,13 @@ class Settings(BaseSettings):
     webhook_verify_token: str | None = None
     meta_webhook_secret: str | None = None
 
+    @property
+    def timezone(self) -> ZoneInfo:
+        try:
+            return ZoneInfo(self.app_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Unknown APP_TIMEZONE: {self.app_timezone}") from exc
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.media_dir.mkdir(parents=True, exist_ok=True)
@@ -49,5 +59,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
+    _ = settings.timezone
     settings.ensure_dirs()
     return settings

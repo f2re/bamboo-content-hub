@@ -4,9 +4,10 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
 from .ai_pack import BambooContentPack, deep_fill
@@ -90,22 +91,88 @@ def create_publication(db: Session, product: Product, channels: list[str], media
     return publication
 
 
+def parse_local_datetime(value: str, timezone_name: str) -> datetime | None:
+    """Parse an HTML datetime-local value in the installation timezone and return UTC."""
+    value = value.strip()
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(UTC)
+    zone = ZoneInfo(timezone_name)
+    local = parsed.replace(tzinfo=zone, fold=0)
+    roundtrip = local.astimezone(UTC).astimezone(zone).replace(tzinfo=None)
+    if roundtrip != parsed:
+        raise ValueError("Выбранное местное время не существует из-за перехода на летнее/зимнее время")
+    return local.astimezone(UTC)
+
+
+def format_local_datetime(value: datetime | None, timezone_name: str) -> str:
+    if value is None:
+        return ""
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return aware.astimezone(ZoneInfo(timezone_name)).strftime("%d.%m.%Y %H:%M %Z")
+
+
 def retry_delay(attempt: int) -> timedelta:
     seconds = [60, 300, 900, 3600][min(max(attempt - 1, 0), 3)]
     return timedelta(seconds=seconds)
 
 
+def claim_delivery(db: Session, delivery_id: str, lease_seconds: int) -> Delivery | None:
+    """Atomically claim one due delivery.
+
+    `next_attempt_at` doubles as a lease deadline while status=processing. This keeps
+    the schema small while allowing stale jobs to be recovered after a worker crash.
+    """
+    now = datetime.now(UTC)
+    lease_until = now + timedelta(seconds=max(30, lease_seconds))
+    due_retry = and_(
+        Delivery.status.in_([DeliveryStatus.pending.value, DeliveryStatus.retry_wait.value]),
+        or_(Delivery.next_attempt_at.is_(None), Delivery.next_attempt_at <= now),
+    )
+    stale_processing = and_(
+        Delivery.status == DeliveryStatus.processing.value,
+        Delivery.next_attempt_at.is_not(None),
+        Delivery.next_attempt_at <= now,
+    )
+    stmt = (
+        update(Delivery)
+        .where(Delivery.id == delivery_id, or_(due_retry, stale_processing))
+        .values(
+            status=DeliveryStatus.processing.value,
+            attempt_count=Delivery.attempt_count + 1,
+            next_attempt_at=lease_until,
+        )
+    )
+    result = db.execute(stmt)
+    db.commit()
+    if result.rowcount != 1:
+        return None
+    db.expire_all()
+    return db.get(Delivery, delivery_id)
+
+
 def due_deliveries(db: Session) -> list[Delivery]:
     now = datetime.now(UTC)
+    due_retry = and_(
+        Delivery.status.in_([DeliveryStatus.pending.value, DeliveryStatus.retry_wait.value]),
+        or_(Delivery.next_attempt_at.is_(None), Delivery.next_attempt_at <= now),
+    )
+    stale_processing = and_(
+        Delivery.status == DeliveryStatus.processing.value,
+        Delivery.next_attempt_at.is_not(None),
+        Delivery.next_attempt_at <= now,
+    )
     stmt = (
         select(Delivery)
         .join(Publication)
         .where(
-            Delivery.status.in_([DeliveryStatus.pending.value, DeliveryStatus.retry_wait.value]),
-            (Delivery.next_attempt_at.is_(None)) | (Delivery.next_attempt_at <= now),
+            or_(due_retry, stale_processing),
             (Publication.scheduled_at.is_(None)) | (Publication.scheduled_at <= now),
             Publication.status != PublicationStatus.draft.value,
         )
+        .order_by(Delivery.next_attempt_at.asc().nullsfirst())
         .limit(20)
     )
     return list(db.scalars(stmt))
