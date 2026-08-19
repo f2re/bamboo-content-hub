@@ -7,22 +7,13 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .integrations.base import MediaInput, PermanentPublishError, PublishRequest, TransientPublishError
-from .integrations.connectors import CONNECTORS
+from .integrations.connectors import CONNECTORS, credential_provider
 from .models import Delivery, DeliveryStatus, IntegrationAccount, MediaAsset, Publication, PublicationStatus
 from .oauth import valid_access_token
 from .security import CredentialCipher, safe_media_path, sign_media_token
 from .services import claim_delivery, retry_delay
 
-CREDENTIAL_PROVIDER_BY_CHANNEL = {
-    "instagram": "meta",
-    "facebook": "meta",
-    "youtube": "google",
-}
 OAUTH_PROVIDERS = {"meta", "google", "pinterest", "tiktok", "vk"}
-
-
-def credential_provider(channel: str) -> str:
-    return CREDENTIAL_PROVIDER_BY_CHANNEL.get(channel, channel)
 
 
 def channel_text(publication: Publication, channel: str) -> str:
