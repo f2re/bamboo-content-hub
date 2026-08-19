@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import httpx
 import pytest
 
@@ -8,10 +6,11 @@ from app.integrations.connectors import TelegramConnector, credential_provider
 
 
 def request(config=None, media=(), text="Текст"):
+    resolved_config = config if config is not None else {"bot_token": "secret-token", "chat_id": "@bamboo"}
     return PublishRequest(
         text=text,
         media=tuple(media),
-        config=config or {"bot_token": "secret-token", "chat_id": "@bamboo"},
+        config=resolved_config,
         content={},
         idempotency_key="test-key",
     )
@@ -77,7 +76,7 @@ async def test_telegram_mixed_media_group_uses_photo_and_video(tmp_path):
     captured = {}
 
     async def handler(http_request):
-        captured["body"] = http_request.content
+        captured["body"] = await http_request.aread()
         return httpx.Response(
             200,
             json={"ok": True, "result": [{"message_id": 20}, {"message_id": 21}]},
