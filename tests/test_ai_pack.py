@@ -1,0 +1,14 @@
+import json, pytest
+from app.ai_pack import BambooContentPack, deep_fill, parse_pack
+
+def pack(request_id="REQ-1"):
+    return {"schema_version":"bamboo-content-pack/1.0","request_id":request_id,"product":{"name":"Чашка","price":{"amount":3900,"currency":"RUB"}},"media":{"images":[{"id":"image_1","role":"cover","alt_text":"Чашка"}],"order":["image_1"],"recommended_cover":"image_1"}}
+def test_parse_markdown_json():
+    parsed=parse_pack("```json\n"+json.dumps(pack(),ensure_ascii=False)+"\n```","REQ-1");assert parsed.product.name=="Чашка"
+def test_request_id_mismatch():
+    with pytest.raises(ValueError): parse_pack(json.dumps(pack()),"OTHER")
+def test_domain_validation():
+    data=pack();data["product"]["price"]["amount"]=-1
+    with pytest.raises(Exception): BambooContentPack.model_validate(data)
+def test_deep_fill_human_wins():
+    assert deep_fill({"price":4200,"name":""},{"price":3900,"name":"Туман"})=={"price":4200,"name":"Туман"}
