@@ -23,7 +23,14 @@ from .db import SessionLocal, get_db
 from .models import DeliveryStatus, IntegrationAccount, MediaAsset, Product, Publication, PublicationStatus, WebhookEvent
 from .oauth import begin_oauth, exchange_code, refresh_account, revoke_account
 from .publisher import process_delivery
-from .security import CredentialCipher, safe_media_path, sign_media_token, verify_media_token
+from .security import (
+    CredentialCipher,
+    create_session_token,
+    safe_media_path,
+    sign_media_token,
+    verify_admin_password,
+    verify_media_token,
+)
 from .services import (
     apply_ai_pack,
     create_publication,
@@ -32,14 +39,30 @@ from .services import (
     parse_local_datetime,
     save_upload,
 )
+from .web_security import SESSION_COOKIE, SecurityMiddleware
 
 settings = get_settings()
-templates = Jinja2Templates(directory="templates")
 logger = logging.getLogger("bamboo.scheduler")
+
+
+def _template_context(request: Request) -> dict:
+    return {
+        "csrf_token": getattr(request.state, "csrf_token", ""),
+        "auth_enabled": not settings.trusted_lan,
+    }
+
+
+templates = Jinja2Templates(directory="templates", context_processors=[_template_context])
 
 
 def _local_datetime(value: datetime | None) -> str:
     return format_local_datetime(value, settings.app_timezone)
+
+
+def _safe_next_path(value: str | None) -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    return value
 
 
 templates.env.filters["local_datetime"] = _local_datetime
@@ -74,6 +97,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
+app.add_middleware(SecurityMiddleware, settings=settings)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -82,6 +106,53 @@ def product_or_404(db: Session, product_id: str) -> Product:
     if not product:
         raise HTTPException(404, "Изделие не найдено")
     return product
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/"):
+    if settings.trusted_lan:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"next_path": _safe_next_path(next), "error": None},
+    )
+
+
+@app.post("/login", response_class=HTMLResponse)
+def login_submit(
+    request: Request,
+    password: str = Form(...),
+    next: str = Form(default="/"),
+):
+    if settings.trusted_lan:
+        return RedirectResponse("/", status_code=303)
+    if not verify_admin_password(settings.admin_password_hash, password):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"next_path": _safe_next_path(next), "error": "Неверный пароль"},
+            status_code=401,
+        )
+    session_token, _csrf = create_session_token(settings)
+    response = RedirectResponse(_safe_next_path(next), status_code=303)
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_token,
+        max_age=settings.session_ttl_seconds,
+        httponly=True,
+        secure=settings.secure_cookies,
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@app.post("/logout")
+def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 @app.get("/health/live")
