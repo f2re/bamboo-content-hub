@@ -6,10 +6,23 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import Settings
+from .integrations.base import MediaInput, PermanentPublishError, PublishRequest, TransientPublishError
 from .integrations.connectors import CONNECTORS
 from .models import Delivery, DeliveryStatus, IntegrationAccount, MediaAsset, Publication, PublicationStatus
-from .security import CredentialCipher, safe_media_path
+from .oauth import valid_access_token
+from .security import CredentialCipher, safe_media_path, sign_media_token
 from .services import claim_delivery, retry_delay
+
+CREDENTIAL_PROVIDER_BY_CHANNEL = {
+    "instagram": "meta",
+    "facebook": "meta",
+    "youtube": "google",
+}
+OAUTH_PROVIDERS = {"meta", "google", "pinterest", "tiktok", "vk"}
+
+
+def credential_provider(channel: str) -> str:
+    return CREDENTIAL_PROVIDER_BY_CHANNEL.get(channel, channel)
 
 
 def channel_text(publication: Publication, channel: str) -> str:
@@ -31,6 +44,63 @@ def _update_publication_status(db: Session, publication: Publication) -> None:
     else:
         publication.status = PublicationStatus.processing.value
     db.commit()
+
+
+async def build_publish_request(
+    db: Session,
+    settings: Settings,
+    publication: Publication,
+    delivery: Delivery,
+) -> PublishRequest:
+    selected = publication.selected_media_ids or []
+    media_rows = list(db.scalars(select(MediaAsset).where(MediaAsset.id.in_(selected)))) if selected else []
+    by_id = {item.id: item for item in media_rows}
+    media: list[MediaInput] = []
+    for asset_id in selected:
+        asset = by_id.get(asset_id)
+        if asset is None:
+            continue
+        token = sign_media_token(settings, asset.id)
+        media.append(
+            MediaInput(
+                asset_id=asset.id,
+                path=str(safe_media_path(settings.media_dir, asset.stored_filename)),
+                mime_type=asset.mime_type,
+                public_url=f"{settings.app_base_url.rstrip('/')}/media/public/{token}",
+                alt_text=asset.alt_text or "",
+                role=asset.role,
+            )
+        )
+
+    provider = credential_provider(delivery.channel)
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider,
+            IntegrationAccount.account_key == "default",
+        )
+    )
+    config: dict = {}
+    if account and account.encrypted_credentials:
+        config = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
+    if provider in OAUTH_PROVIDERS and account and account.encrypted_credentials:
+        config["access_token"] = await valid_access_token(db, settings, provider)
+
+    return PublishRequest(
+        text=channel_text(publication, delivery.channel),
+        media=tuple(media),
+        config=config,
+        content=((publication.channel_content or {}).get(delivery.channel) or {}),
+        idempotency_key=delivery.idempotency_key,
+    )
+
+
+def _schedule_retry(delivery: Delivery) -> None:
+    if delivery.attempt_count >= 4:
+        delivery.status = DeliveryStatus.failed.value
+        delivery.next_attempt_at = None
+    else:
+        delivery.status = DeliveryStatus.retry_wait.value
+        delivery.next_attempt_at = datetime.now(UTC) + retry_delay(delivery.attempt_count)
 
 
 async def process_delivery(db: Session, settings: Settings, delivery: Delivery) -> bool:
@@ -59,16 +129,12 @@ async def process_delivery(db: Session, settings: Settings, delivery: Delivery) 
         _update_publication_status(db, publication)
         return True
 
-    media = list(db.scalars(select(MediaAsset).where(MediaAsset.id.in_(publication.selected_media_ids)))) if publication.selected_media_ids else []
-    by_id = {m.id: m for m in media}
-    media_paths = [str(safe_media_path(settings.media_dir, by_id[mid].stored_filename)) for mid in publication.selected_media_ids if mid in by_id]
-    config = {}
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == delivery.channel, IntegrationAccount.account_key == "default"))
-    if account and account.encrypted_credentials:
-        config = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
-
     try:
-        result = await connector.publish(channel_text(publication, delivery.channel), media_paths, config)
+        request = await build_publish_request(db, settings, publication, delivery)
+        errors = connector.validate(request)
+        if errors:
+            raise PermanentPublishError("; ".join(errors))
+        result = await connector.publish(request)
         if result.manual_action:
             delivery.status = DeliveryStatus.manual_action.value
             delivery.last_error = result.message
@@ -79,14 +145,16 @@ async def process_delivery(db: Session, settings: Settings, delivery: Delivery) 
             delivery.published_at = datetime.now(UTC)
             delivery.last_error = None
         delivery.next_attempt_at = None
-    except Exception as exc:
+    except PermanentPublishError as exc:
         delivery.last_error = str(exc)[:1500]
-        if delivery.attempt_count >= 4:
-            delivery.status = DeliveryStatus.failed.value
-            delivery.next_attempt_at = None
-        else:
-            delivery.status = DeliveryStatus.retry_wait.value
-            delivery.next_attempt_at = datetime.now(UTC) + retry_delay(delivery.attempt_count)
+        delivery.status = DeliveryStatus.failed.value
+        delivery.next_attempt_at = None
+    except TransientPublishError as exc:
+        delivery.last_error = str(exc)[:1500]
+        _schedule_retry(delivery)
+    except Exception as exc:
+        delivery.last_error = f"{type(exc).__name__}: {exc}"[:1500]
+        _schedule_retry(delivery)
     db.commit()
     _update_publication_status(db, publication)
     return True
