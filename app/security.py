@@ -88,12 +88,17 @@ def _b64_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
+def _auth_fingerprint(settings: Settings) -> str:
+    return token_hash(settings.admin_password_hash or "")[:24]
+
+
 def create_session_token(settings: Settings) -> tuple[str, str]:
     csrf = random_token(24)
     payload = {
         "v": 1,
         "exp": int(time.time()) + settings.session_ttl_seconds,
         "csrf": csrf,
+        "auth": _auth_fingerprint(settings),
     }
     encoded = _b64_encode(json.dumps(payload, separators=(",", ":")).encode())
     signature = hmac.new(
@@ -120,6 +125,8 @@ def verify_session_token(settings: Settings, token: str | None) -> dict[str, Any
         if payload.get("v") != 1 or int(payload.get("exp", 0)) < int(time.time()):
             return None
         if not isinstance(payload.get("csrf"), str):
+            return None
+        if not hmac.compare_digest(str(payload.get("auth", "")), _auth_fingerprint(settings)):
             return None
         return payload
     except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
