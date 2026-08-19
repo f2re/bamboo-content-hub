@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field
@@ -20,6 +21,9 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="change-me-in-production", min_length=16)
     master_key: str | None = None
     trusted_lan: bool = True
+    admin_password_hash: str | None = None
+    session_ttl_seconds: int = 12 * 60 * 60
+    auth_rate_limit_per_minute: int = 10
     scheduler_enabled: bool = True
     scheduler_interval_seconds: int = 10
     delivery_lease_seconds: int = 300
@@ -51,6 +55,26 @@ class Settings(BaseSettings):
         except ZoneInfoNotFoundError as exc:
             raise ValueError(f"Unknown APP_TIMEZONE: {self.app_timezone}") from exc
 
+    @property
+    def secure_cookies(self) -> bool:
+        return urlparse(self.app_base_url).scheme == "https"
+
+    def validate_runtime_security(self) -> None:
+        if self.trusted_lan:
+            return
+        problems: list[str] = []
+        if len(self.secret_key) < 32 or self.secret_key == "change-me-in-production":
+            problems.append("SECRET_KEY must be a random value of at least 32 characters")
+        if not self.master_key or len(self.master_key) < 32:
+            problems.append("MASTER_KEY must be a separate random value of at least 32 characters")
+        if not self.admin_password_hash or not self.admin_password_hash.startswith("$argon2"):
+            problems.append("ADMIN_PASSWORD_HASH must contain an Argon2 password hash")
+        parsed = urlparse(self.app_base_url)
+        if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            problems.append("APP_BASE_URL must use HTTPS when TRUSTED_LAN=false")
+        if problems:
+            raise ValueError("Unsafe public configuration: " + "; ".join(problems))
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.media_dir.mkdir(parents=True, exist_ok=True)
@@ -60,5 +84,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     _ = settings.timezone
+    settings.validate_runtime_security()
     settings.ensure_dirs()
     return settings
