@@ -19,6 +19,16 @@ from .base import (
     raise_for_provider,
 )
 
+CREDENTIAL_PROVIDER_BY_CHANNEL = {
+    "instagram": "meta",
+    "facebook": "meta",
+    "youtube": "google",
+}
+
+
+def credential_provider(channel: str) -> str:
+    return CREDENTIAL_PROVIDER_BY_CHANNEL.get(channel, channel)
+
 
 def _chunks(text: str, limit: int) -> list[str]:
     text = text.strip()
@@ -120,7 +130,13 @@ class TelegramConnector:
         return f"https://api.telegram.org/bot{config['bot_token']}"
 
     async def health(self, request: PublishRequest, client: httpx.AsyncClient | None = None) -> ConnectorHealth:
-        ensure_valid(self, request)
+        auth_errors = []
+        if not request.config.get("bot_token"):
+            auth_errors.append("Не задан Telegram bot token")
+        if not request.config.get("chat_id"):
+            auth_errors.append("Не задан Telegram channel/chat ID")
+        if auth_errors:
+            raise PermanentPublishError("; ".join(auth_errors))
         owned = client is None
         client = client or httpx.AsyncClient(timeout=20)
         try:
