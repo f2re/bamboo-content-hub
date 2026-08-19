@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .integrations.base import MediaInput, PermanentPublishError, PublishRequest, TransientPublishError
-from .integrations.connectors import CONNECTORS, credential_provider
+from .integrations.connectors import credential_provider
+from .integrations.registry import CONNECTORS
 from .models import Delivery, DeliveryStatus, IntegrationAccount, MediaAsset, Publication, PublicationStatus
 from .oauth import valid_access_token
 from .security import CredentialCipher, safe_media_path, sign_media_token
