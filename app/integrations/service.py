@@ -22,17 +22,22 @@ PROVIDER_CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "tiktok": ("privacy_level", "disable_comment", "disable_duet", "disable_stitch"),
     "google": ("youtube_privacy_status", "youtube_category_id"),
 }
-SECRET_CONFIG_FIELDS = {"bot_token"}
-TOKEN_FIELDS = {
-    "access_token",
-    "refresh_token",
-    "id_token",
-    "token_type",
-    "expires_in",
-    "scope",
-    "refresh_token_expires_in",
-    "open_id",
+CONFIG_FIELD_META: dict[str, dict] = {
+    "bot_token": {"label": "Токен бота", "type": "password", "placeholder": "123456:ABC…"},
+    "chat_id": {"label": "Канал / chat ID", "type": "text", "placeholder": "@bamboopottery"},
+    "board_id": {"label": "Доска Pinterest", "type": "text", "placeholder": "ID доски"},
+    "board_section_id": {"label": "Раздел доски", "type": "text", "placeholder": "необязательно"},
+    "owner_id": {"label": "Стена VK", "type": "text", "placeholder": "ID пользователя или -ID сообщества"},
+    "instagram_user_id": {"label": "Instagram Professional ID", "type": "text", "placeholder": "ID профессионального аккаунта"},
+    "facebook_page_id": {"label": "Facebook Page ID", "type": "text", "placeholder": "ID страницы"},
+    "privacy_level": {"label": "Видимость TikTok", "type": "text", "placeholder": "PUBLIC_TO_EVERYONE"},
+    "disable_comment": {"label": "Отключить комментарии TikTok", "type": "checkbox"},
+    "disable_duet": {"label": "Отключить Duet", "type": "checkbox"},
+    "disable_stitch": {"label": "Отключить Stitch", "type": "checkbox"},
+    "youtube_privacy_status": {"label": "Видимость YouTube", "type": "text", "placeholder": "private / unlisted / public"},
+    "youtube_category_id": {"label": "Категория YouTube", "type": "text", "placeholder": "22"},
 }
+SECRET_CONFIG_FIELDS = {"bot_token"}
 
 CHANNELS_BY_PROVIDER: dict[str, tuple[str, ...]] = {
     "telegram": ("telegram",),
@@ -88,6 +93,8 @@ def merge_provider_config(
         value = values[key]
         if isinstance(value, str):
             value = value.strip()
+        if key in SECRET_CONFIG_FIELDS and value == "••••••••":
+            continue
         if value in (None, ""):
             credentials.pop(key, None)
         else:
@@ -110,10 +117,19 @@ def public_provider_config(db: Session, settings: Settings, provider: str) -> di
     for field in PROVIDER_CONFIG_FIELDS.get(provider, ()):
         value = credentials.get(field)
         if field in SECRET_CONFIG_FIELDS:
-            result[field] = "••••••••" if value else ""
+            result[field] = ""
+            result[f"{field}_configured"] = bool(value)
         else:
             result[field] = value
     return result
+
+
+def provider_config_fields(provider: str) -> list[dict]:
+    return [
+        {"name": name, **CONFIG_FIELD_META[name]}
+        for name in PROVIDER_CONFIG_FIELDS.get(provider, ())
+        if name in CONFIG_FIELD_META
+    ]
 
 
 async def channel_health(db: Session, settings: Settings, channel: str) -> dict:
