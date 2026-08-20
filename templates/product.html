@@ -1,1 +1,226 @@
-{% extends 'base.html' %}{% set heading=product.name %}{% block top_action %}<a class="button primary" href="/products/{{product.id}}/ai">Заполнить с ИИ</a>{% endblock %}{% block content %}<section class="grid two"><article class="card"><h3>Медиа</h3><div class="media-grid">{% for m in product.media|sort(attribute='sort_order') %}<label class="media-item"><img src="/media/{{m.id}}" alt="{{m.alt_text or ''}}"><span>{{m.role or m.media_type}}</span></label>{% else %}<div class="empty wide">Добавьте фото или видео изделия.</div>{% endfor %}</div><form class="upload" method="post" action="/products/{{product.id}}/media" enctype="multipart/form-data"><input type="file" name="files" accept="image/*,video/*" multiple required><button class="button">Загрузить</button></form></article><article class="card"><h3>Карточка</h3><dl class="facts"><dt>Тип</dt><dd>{{product.product_type or '—'}}</dd><dt>Артикул</dt><dd>{{product.sku or '—'}}</dd><dt>Коллекция</dt><dd>{{product.collection or '—'}}</dd><dt>Описание</dt><dd>{{product.description or '—'}}</dd></dl><a class="button soft full" href="/products/{{product.id}}/ai">Подготовить запрос для нейросети</a></article></section><section class="card"><div class="card-head"><h3>Создать публикацию</h3></div><form method="post" action="/products/{{product.id}}/publications" class="publish-form"><div class="channels">{% for c in ['demo','telegram','instagram','vk','pinterest','facebook','tiktok','youtube','livemaster'] %}<label><input type="checkbox" name="channels" value="{{c}}" {% if c=='demo' %}checked{% endif %}>{{c}}</label>{% endfor %}</div><div class="media-select">{% for m in product.media|sort(attribute='sort_order') %}<label><input type="checkbox" name="media_ids" value="{{m.id}}" checked><img src="/media/{{m.id}}"></label>{% endfor %}</div><label>Когда<input type="datetime-local" name="scheduled_at"></label><div class="actions"><button class="button" name="action" value="draft">Сохранить черновик</button><button class="button primary" name="action" value="publish">Опубликовать</button></div></form></section>{% endblock %}
+{% extends 'base.html' %}
+{% set heading=product.name %}
+{% set content=product.channel_content or {} %}
+{% set tt=content.get('tiktok', {}) %}
+{% set yt=content.get('youtube', {}) %}
+{% set channel_labels={
+  'demo':'Проверка',
+  'telegram':'Telegram',
+  'instagram':'Instagram',
+  'vk':'VK',
+  'pinterest':'Pinterest',
+  'facebook':'Facebook',
+  'tiktok':'TikTok',
+  'youtube':'YouTube',
+  'livemaster':'Ярмарка мастеров'
+} %}
+{% block top_action %}
+<a class="button primary" href="/products/{{ product.id }}/ai">Заполнить с ИИ</a>
+{% endblock %}
+{% block content %}
+<section class="grid two">
+  <article class="card">
+    <h3>Медиа</h3>
+    <div class="media-grid">
+      {% for m in product.media|sort(attribute='sort_order') %}
+      <div class="media-item">
+        {% if m.media_type == 'video' %}
+        <video src="/media/{{ m.id }}" muted controls preload="metadata"></video>
+        {% else %}
+        <img src="/media/{{ m.id }}" alt="{{ m.alt_text or '' }}">
+        {% endif %}
+        <span>{{ m.role or m.media_type }}</span>
+      </div>
+      {% else %}
+      <div class="empty wide">Добавьте фото или видео изделия.</div>
+      {% endfor %}
+    </div>
+    <form class="upload" method="post" action="/products/{{ product.id }}/media"
+          enctype="multipart/form-data">
+      <input type="file" name="files" accept="image/*,video/*" multiple required>
+      <button class="button">Загрузить</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <h3>Карточка</h3>
+    <dl class="facts">
+      <dt>Тип</dt><dd>{{ product.product_type or '—' }}</dd>
+      <dt>Артикул</dt><dd>{{ product.sku or '—' }}</dd>
+      <dt>Коллекция</dt><dd>{{ product.collection or '—' }}</dd>
+      <dt>Описание</dt><dd>{{ product.description or '—' }}</dd>
+    </dl>
+    <a class="button soft full" href="/products/{{ product.id }}/ai">
+      Подготовить запрос для нейросети
+    </a>
+  </article>
+</section>
+
+<section class="card">
+  <div class="card-head"><h3>Создать публикацию</h3></div>
+  <form method="post" action="/products/{{ product.id }}/publications"
+        class="publish-form" data-publish-form>
+    <div class="channels">
+      {% for c in ['demo','telegram','instagram','vk','pinterest','facebook','tiktok','youtube','livemaster'] %}
+      <label>
+        <input type="checkbox" name="channels" value="{{ c }}"
+               data-channel-toggle="{{ c }}" {% if c=='demo' %}checked{% endif %}>
+        {{ channel_labels[c] }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="media-select">
+      {% for m in product.media|sort(attribute='sort_order') %}
+      <label>
+        <input type="checkbox" name="media_ids" value="{{ m.id }}" checked>
+        {% if m.media_type == 'video' %}
+        <video src="/media/{{ m.id }}" muted preload="metadata"></video>
+        {% else %}
+        <img src="/media/{{ m.id }}" alt="">
+        {% endif %}
+      </label>
+      {% endfor %}
+    </div>
+
+    <section class="platform-settings" data-channel-settings="tiktok" hidden>
+      <div class="settings-head">
+        <div>
+          <p class="eyebrow">TikTok Direct Post</p>
+          <h4>Проверьте аккаунт и публикацию</h4>
+        </div>
+        <button class="button small-button" type="button" data-load-tiktok>
+          Обновить аккаунт
+        </button>
+      </div>
+      <input type="hidden" name="tiktok_creator_checked" value="false"
+             data-tiktok-creator-checked>
+      <p class="account-summary muted" data-tiktok-account aria-live="polite">
+        При выборе TikTok сведения об аккаунте будут запрошены заново.
+      </p>
+
+      <div class="settings-grid two-columns">
+        <label>
+          Заголовок фото
+          <input name="tiktok_title" maxlength="90" value="{{ tt.get('title', '') }}"
+                 placeholder="Необязательно для видео">
+        </label>
+        <label>
+          Кто увидит публикацию
+          <select name="tiktok_privacy_level" data-tiktok-privacy>
+            <option value="">Сначала обновите аккаунт</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        Подпись
+        <textarea name="tiktok_caption" rows="4" maxlength="2200"
+                  data-tiktok-caption>{{ tt.get('caption', '') }}</textarea>
+      </label>
+
+      <div class="option-grid">
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_disable_comment" data-tiktok-control="comment">
+          <span>Отключить комментарии</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_disable_duet" data-tiktok-control="duet">
+          <span>Отключить дуэты</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_disable_stitch" data-tiktok-control="stitch">
+          <span>Отключить Stitch</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_is_aigc">
+          <span>Материал создан или существенно изменён ИИ</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_auto_add_music">
+          <span>Автоматически добавить музыку к фото</span>
+        </label>
+      </div>
+
+      <label class="check-row disclosure-toggle">
+        <input type="checkbox" name="tiktok_commercial_content_toggle"
+               data-tiktok-commercial>
+        <span>Публикация продвигает товар, услугу или бренд</span>
+      </label>
+      <div class="disclosure-options" data-tiktok-disclosure hidden>
+        <p class="muted">Укажите, кого продвигает публикация. Можно выбрать оба варианта.</p>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_brand_organic_toggle"
+                 data-tiktok-own-brand>
+          <span>Свой бренд или собственный бизнес — отметка «Рекламный контент»</span>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="tiktok_brand_content_toggle"
+                 data-tiktok-branded>
+          <span>Сторонний бренд — отметка «Платное партнёрство»</span>
+        </label>
+      </div>
+
+      <label class="check-row consent-row">
+        <input type="checkbox" name="tiktok_direct_post_consent"
+               data-tiktok-consent>
+        <span data-tiktok-consent-text>
+          Разрешаю отправить выбранные материалы и текст в подключённый аккаунт TikTok.
+        </span>
+      </label>
+      <p class="field-help">
+        TikTok повторно проверит настройки аккаунта перед отправкой. Обработка публикации может
+        занять несколько минут. Фото должны быть доступны с подтверждённого HTTPS-домена.
+      </p>
+    </section>
+
+    <section class="platform-settings" data-channel-settings="youtube" hidden>
+      <div class="settings-head">
+        <div>
+          <p class="eyebrow">YouTube</p>
+          <h4>Метаданные видео</h4>
+        </div>
+        <button class="button small-button" type="button" data-health="youtube">
+          Проверить канал
+        </button>
+      </div>
+      <p class="account-summary muted" data-health-result aria-live="polite"></p>
+      <label>
+        Заголовок
+        <input name="youtube_title" maxlength="100"
+               value="{{ yt.get('title') or product.name }}">
+      </label>
+      <label>
+        Описание
+        <textarea name="youtube_description" rows="5">{{ yt.get('description', '') }}</textarea>
+      </label>
+      <label>
+        Кто увидит видео
+        <select name="youtube_privacy_status" data-youtube-privacy>
+          <option value="">Выберите видимость</option>
+          <option value="private" {% if yt.get('privacy_status') == 'private' %}selected{% endif %}>
+            Только я
+          </option>
+          <option value="unlisted" {% if yt.get('privacy_status') == 'unlisted' %}selected{% endif %}>
+            Доступ по ссылке
+          </option>
+          <option value="public" {% if yt.get('privacy_status') == 'public' %}selected{% endif %}>
+            Для всех
+          </option>
+        </select>
+      </label>
+      <p class="field-help">
+        Видео загружается частями и автоматически возобновляется при кратковременном обрыве связи.
+      </p>
+    </section>
+
+    <label class="schedule-field">
+      Когда
+      <input type="datetime-local" name="scheduled_at">
+    </label>
+    <div class="actions">
+      <button class="button" name="action" value="draft">Сохранить черновик</button>
+      <button class="button primary" name="action" value="publish">Опубликовать</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

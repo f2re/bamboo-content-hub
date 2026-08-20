@@ -1,1 +1,69 @@
-{% extends 'base.html' %}{% set heading='Подключения' %}{% block content %}<section class="connection-grid">{% for provider in providers %}{% set acc=accounts.get(provider) %}<article class="card connection"><div class="card-head"><div><h3>{{provider|capitalize}}</h3><p class="muted">{% if acc %}{{acc.status}}{% else %}Не подключено{% endif %}</p></div><span class="dot {% if acc and acc.status=='connected' %}ok{% endif %}"></span></div>{% if provider == 'telegram' %}<button class="button full" data-telegram>Настроить Telegram</button>{% else %}<a class="button full {% if not acc %}primary{% endif %}" href="/api/oauth/{{provider}}/start">{% if acc and acc.status=='connected' %}Переподключить{% else %}Подключить{% endif %}</a>{% endif %}{% if acc %}<button class="link danger" data-disconnect="{{provider}}">Отключить</button>{% endif %}</article>{% endfor %}</section><dialog id="telegram-dialog"><form class="dialog-form"><h2>Telegram</h2><label>Токен бота<input id="tg-token" type="password" autocomplete="off"></label><label>Канал / chat ID<input id="tg-chat" placeholder="@bamboopottery"></label><div class="actions"><button class="button" type="button" data-close-telegram>Отмена</button><button class="button primary" type="button" data-save-telegram>Сохранить</button></div></form></dialog>{% endblock %}
+{% extends 'base.html' %}
+{% set heading='Подключения' %}
+{% block content %}
+<section class="connection-grid">
+  {% for item in integrations %}
+  {% set acc=item.account %}
+  <article class="card connection" data-connection-card="{{ item.provider }}">
+    <div class="card-head">
+      <div>
+        <h3>{{ item.label }}</h3>
+        <p class="muted" data-connection-status>{{ item.status_label }}</p>
+      </div>
+      <span class="dot {% if acc and acc.status=='connected' %}ok{% endif %}"></span>
+    </div>
+
+    {% if item.provider != 'telegram' %}
+    <a class="button full {% if not acc or acc.status!='connected' %}primary{% endif %}"
+       href="/api/oauth/{{ item.provider }}/start">
+      {% if acc and acc.status=='connected' %}Переподключить{% else %}Подключить{% endif %}
+    </a>
+    {% endif %}
+
+    {% if item.fields %}
+    <form class="integration-form" data-integration-form data-provider="{{ item.provider }}">
+      {% for field in item.fields %}
+        {% set value=item.config.get(field.name) %}
+        {% if field.type == 'checkbox' %}
+        <label class="check-row">
+          <input type="checkbox" name="{{ field.name }}" {% if value %}checked{% endif %}>
+          <span>{{ field.label }}</span>
+        </label>
+        {% else %}
+        <label>
+          {{ field.label }}
+          <input
+            type="{{ field.type }}"
+            name="{{ field.name }}"
+            value="{% if field.type != 'password' and value is not none %}{{ value }}{% endif %}"
+            placeholder="{% if field.type == 'password' and item.config.get(field.name ~ '_configured') %}Сохранено — оставьте пустым без изменений{% else %}{{ field.placeholder or '' }}{% endif %}"
+            {% if field.type == 'password' %}autocomplete="new-password" data-secret-field{% endif %}
+            {% if field.required %}required{% endif %}
+          >
+          {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
+        </label>
+        {% endif %}
+      {% endfor %}
+      <button class="button soft full" type="submit">Сохранить настройки</button>
+      <p class="form-message muted" data-config-result aria-live="polite"></p>
+    </form>
+    {% endif %}
+
+    <div class="connection-checks">
+      {% for channel in item.channels %}
+      <button class="link" type="button" data-health="{{ channel.name }}">
+        Проверить {{ channel.label }}
+      </button>
+      {% endfor %}
+    </div>
+    <p class="health-result muted" data-health-result aria-live="polite"></p>
+
+    {% if acc %}
+    <button class="link danger" type="button" data-disconnect="{{ item.provider }}">
+      Отключить
+    </button>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
