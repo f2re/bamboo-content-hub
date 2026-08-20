@@ -8,6 +8,7 @@ import shutil
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import UploadFile
@@ -22,6 +23,102 @@ from .security import detect_media_mime, safe_media_extension, safe_media_path
 IMAGE_MAX_SIDE = 2560
 IMAGE_JPEG_QUALITY = 90
 VIDEO_MAX_SIDE = 1920
+
+CRITICAL_AI_FIELDS: dict[str, str] = {
+    "price.amount": "Цена",
+    "materials": "Материалы",
+    "glaze": "Глазурь",
+    "firing": "Режим обжига",
+    "dimensions.height_mm": "Высота",
+    "dimensions.diameter_mm": "Диаметр",
+    "dimensions.volume_ml": "Объём",
+    "dimensions.weight_g": "Масса",
+    "care.dishwasher": "Посудомоечная машина",
+    "care.microwave": "Микроволновая печь",
+    "care.food_safe": "Контакт с пищей",
+    "availability": "Наличие",
+}
+
+
+def _has_value(value: Any) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _nested_get(data: dict, path: str) -> Any:
+    current: Any = data
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _nested_drop(data: dict, path: str) -> None:
+    parts = path.split(".")
+    current: Any = data
+    for part in parts[:-1]:
+        if not isinstance(current, dict):
+            return
+        current = current.get(part)
+        if current is None:
+            return
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
+
+
+def _flatten_values(data: Any, prefix: str = "product") -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if not isinstance(data, dict):
+        return result
+    for key, value in data.items():
+        if key == "_provenance":
+            continue
+        path = f"{prefix}.{key}"
+        if isinstance(value, dict):
+            result.update(_flatten_values(value, path))
+        elif _has_value(value):
+            result[path] = value
+    return result
+
+
+def validate_pack_media(product: Product, pack: BambooContentPack) -> None:
+    actual = {
+        f"image_{index + 1}"
+        for index, _asset in enumerate(sorted(product.media, key=lambda item: item.sort_order))
+    }
+    referenced = {item.id for item in pack.media.images} | set(pack.media.order)
+    if pack.media.recommended_cover:
+        referenced.add(pack.media.recommended_cover)
+    unknown = referenced - actual
+    if unknown:
+        raise ValueError(
+            "Ответ ИИ ссылается на отсутствующие изображения: " + ", ".join(sorted(unknown))
+        )
+
+
+def build_ai_review(product: Product, pack: BambooContentPack) -> dict:
+    """Build server-authoritative confirmation requirements for new critical facts."""
+    validate_pack_media(product, pack)
+    incoming = pack.product.model_dump()
+    existing = dict(product.facts or {})
+    required: list[dict] = []
+    for relative_path, label in CRITICAL_AI_FIELDS.items():
+        proposed = _nested_get(incoming, relative_path)
+        current = _nested_get(existing, relative_path)
+        if _has_value(proposed) and not _has_value(current):
+            required.append(
+                {
+                    "path": f"product.{relative_path}",
+                    "label": label,
+                    "value": proposed,
+                    "reason": "Новый критичный факт предложен ИИ и должен быть подтверждён человеком.",
+                }
+            )
+    return {
+        "required_confirmation": required,
+        "needs_confirmation": [item.model_dump() for item in pack.needs_confirmation],
+        "assumptions": [item.model_dump() for item in pack.assumptions],
+    }
 
 
 def _optimize_image(content: bytes, mime: str) -> tuple[bytes, str]:
@@ -151,8 +248,33 @@ async def save_upload(
     return asset
 
 
-def apply_ai_pack(db: Session, product: Product, pack: BambooContentPack) -> Product:
+def apply_ai_pack(
+    db: Session,
+    product: Product,
+    pack: BambooContentPack,
+    confirmed_paths: set[str] | None = None,
+) -> Product:
+    confirmed_paths = set(confirmed_paths or ())
+    review = build_ai_review(product, pack)
+    required_paths = {item["path"] for item in review["required_confirmation"]}
+    blocked_paths = required_paths - confirmed_paths
+
     incoming = pack.product.model_dump()
+    for full_path in blocked_paths:
+        relative_path = full_path.removeprefix("product.")
+        _nested_drop(incoming, relative_path)
+
+    existing_facts = deepcopy(product.facts or {})
+    existing_provenance = dict(existing_facts.pop("_provenance", {}) or {})
+    current_flat = _flatten_values(existing_facts)
+    incoming_flat = _flatten_values(incoming)
+    for path in current_flat:
+        existing_provenance.setdefault(path, "user")
+    for path in incoming_flat:
+        relative_path = path.removeprefix("product.")
+        if not _has_value(_nested_get(existing_facts, relative_path)):
+            existing_provenance[path] = "confirmed" if path in confirmed_paths else "ai"
+
     product.name = product.name or incoming.get("name") or "Без названия"
     product.sku = product.sku or incoming.get("sku")
     product.product_type = product.product_type or incoming.get("product_type")
@@ -160,7 +282,9 @@ def apply_ai_pack(db: Session, product: Product, pack: BambooContentPack) -> Pro
     product.description = (
         product.description or pack.content.full_description or pack.content.short_description
     )
-    product.facts = deep_fill(product.facts or {}, incoming)
+    merged_facts = deep_fill(existing_facts, incoming)
+    merged_facts["_provenance"] = existing_provenance
+    product.facts = merged_facts
     product.channel_content = deep_fill(product.channel_content or {}, pack.channels.model_dump())
     product.ai_request_id = pack.request_id
     by_image = {
