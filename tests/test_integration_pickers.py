@@ -38,7 +38,7 @@ async def test_meta_health_offers_page_picker_and_discovers_instagram():
                     {
                         "id": "page-1",
                         "name": "Bamboo Pottery",
-                        "instagram_business_account": {"id": "ig-1", "username": "bamboo"},
+                        "instagram_business_account": {"id": "ig-1"},
                     },
                     {"id": "page-2", "name": "Без Instagram"},
                 ]
@@ -52,7 +52,7 @@ async def test_meta_health_offers_page_picker_and_discovers_instagram():
     assert result["ok"] is False
     assert result["details"]["select_field"] == "facebook_page_id"
     assert result["details"]["options"] == [
-        {"value": "page-1", "label": "Bamboo Pottery · @bamboo"}
+        {"value": "page-1", "label": "Bamboo Pottery · Instagram подключён"}
     ]
 
 
