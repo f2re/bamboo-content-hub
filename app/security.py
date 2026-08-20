@@ -21,6 +21,7 @@ _MEDIA_EXTENSIONS = {
     "image/png": ".png",
     "image/gif": ".gif",
     "image/webp": ".webp",
+    "image/heic": ".heic",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
     "video/webm": ".webm",
@@ -147,6 +148,8 @@ def detect_media_mime(content: bytes) -> str | None:
         return "video/webm"
     if len(content) >= 12 and content[4:8] == b"ftyp":
         brand = content[8:12]
+        if brand in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}:
+            return "image/heic"
         if brand == b"qt  ":
             return "video/quicktime"
         if brand in {b"isom", b"iso2", b"mp41", b"mp42", b"avc1", b"M4V ", b"MSNV"}:
