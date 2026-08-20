@@ -2,7 +2,7 @@ from app.db import SessionLocal
 from app.models import MediaAsset, Product
 
 
-def test_help_covers_ai_and_connection_workflows(client):
+def test_help_covers_ai_and_manual_connection_workflows(client):
     page = client.get("/static/help.html")
     assert page.status_code == 200
     assert "Открыл изделие → скопировал → вставил" in page.text
@@ -12,8 +12,10 @@ def test_help_covers_ai_and_connection_workflows(client):
     assert "Ярмарка мастеров" in page.text
     assert "Статического промпта для копирования нет специально" in page.text
     assert "Скопировать основу" not in page.text
-    assert "Официальная ссылка → callback → подключить" in page.text
-    assert "ID найдутся автоматически" in page.text
+    assert "Выбрал площадку → получил пакет → вставил" in page.text
+    assert "Без n8n" in page.text
+    assert "Почему не cookies" in page.text
+    assert "Автоматически через официальный API" in page.text
     assert 'href="/connections"' in page.text
 
 
