@@ -86,6 +86,13 @@ git merge --ff-only origin/main
 
 docker compose -f compose.yml build bamboo
 docker compose -f compose.yml run --rm bamboo alembic upgrade head
+
+# Deterministic fault injection used only by CI to prove that rollback actually works.
+if [ "${BAMBOO_UPDATE_FAILPOINT:-}" = "after_migration" ]; then
+  echo "CI failpoint: after_migration" >&2
+  false
+fi
+
 docker compose -f compose.yml up -d bamboo
 ./scripts/smoke.sh
 
