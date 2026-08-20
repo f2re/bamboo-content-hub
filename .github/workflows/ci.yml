@@ -32,9 +32,11 @@ jobs:
 
   lifecycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Clean install and healthcheck
         run: ./scripts/install.sh
       - name: Backup and restore round-trip
@@ -42,6 +44,15 @@ jobs:
           backup=$(./scripts/backup.sh | tail -n1)
           test -s "$backup"
           ./scripts/restore.sh "$backup"
+      - name: Failed update rolls back automatically
+        run: |
+          before=$(git rev-parse HEAD)
+          if BAMBOO_UPDATE_FAILPOINT=after_migration ./scripts/update.sh; then
+            echo "Expected the CI failpoint to fail the update" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$before"
+          ./scripts/smoke.sh
       - name: Container logs on failure
         if: failure()
         run: docker compose -f compose.yml logs --no-color bamboo || true
