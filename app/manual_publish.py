@@ -4,7 +4,6 @@ import io
 import re
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -174,7 +173,7 @@ def manual_package_zip(
                 arcname=name,
             )
     output.seek(0)
-    filename = f"bamboo-{delivery.channel}-{_safe_name(product.name, 'product')}.zip"
+    filename = f"bamboo-{delivery.channel}-{product.id[:8]}.zip"
     return StreamingResponse(
         output,
         media_type="application/zip",
