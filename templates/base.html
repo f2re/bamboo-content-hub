@@ -9,10 +9,17 @@
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/apple-ui.css">
+  <link rel="stylesheet" href="/static/manual-mode.css">
   <title>{{ title or 'Bamboo Content Hub' }}</title>
 </head>
 {% set current_path = request.url.path if request else '' %}
-<body data-theme="light">
+<body
+  data-theme="light"
+  {% if manual_modes is defined %}
+  data-manual-tiktok="{{ 'true' if manual_modes.get('tiktok') else 'false' }}"
+  data-manual-youtube="{{ 'true' if manual_modes.get('youtube') else 'false' }}"
+  {% endif %}
+>
   <a class="skip-link" href="#main-content">К содержимому</a>
   <div class="shell">
     <aside class="sidebar">
@@ -58,6 +65,7 @@
   </nav>
 
   <script src="/static/app.js"></script>
+  <script src="/static/manual-mode-ui.js"></script>
   <script src="/static/publication-preflight.js"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@
   <meta name="csrf-token" content="">
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/apple-ui.css">
+  <link rel="stylesheet" href="/static/manual-mode.css">
   <title>Справка · Bamboo Content Hub</title>
 </head>
 <body data-theme="light">
@@ -26,9 +27,7 @@
     </aside>
 
     <main id="main-content">
-      <header class="top">
-        <div><div class="eyebrow">Bamboo Pottery</div><h1>Справка</h1></div>
-      </header>
+      <header class="top"><div><div class="eyebrow">Bamboo Pottery</div><h1>Справка</h1></div></header>
 
       <section class="hero" id="ai-workflow">
         <span class="pill">ИИ-контент</span>
@@ -37,91 +36,54 @@
       </section>
 
       <section class="grid two">
-        <article class="card">
-          <span class="step">1</span>
-          <h3>Получите готовый запрос</h3>
-          <ol>
-            <li>Создайте изделие и заполните известные факты.</li>
-            <li>Загрузите фото/видео в нужном порядке.</li>
-            <li>Откройте «Подготовка с ИИ».</li>
-            <li>Нажмите «Скопировать готовый запрос».</li>
-          </ol>
-          <p class="muted small">Ничего дописывать, подставлять или собирать вручную не нужно.</p>
-        </article>
-        <article class="card">
-          <span class="step">2</span>
-          <h3>Передайте запрос модели</h3>
-          <ol>
-            <li>Вставьте запрос как есть.</li>
-            <li>Приложите те же файлы в порядке image_1…N.</li>
-            <li>Скопируйте один JSON-объект без пояснений.</li>
-          </ol>
-        </article>
-        <article class="card">
-          <span class="step">3</span>
-          <h3>Проверьте результат</h3>
-          <p>Вставьте JSON и нажмите «Проверить». Просмотрите <code>needs_confirmation</code> и <code>assumptions</code>. Цена, материалы, размеры, уход и наличие требуют явного подтверждения.</p>
-        </article>
-        <article class="card">
-          <span class="step">4</span>
-          <h3>Примените и публикуйте</h3>
-          <p>Hub заполнит только допустимые пустые поля и сохранит отдельные тексты для Instagram, VK, Telegram, Pinterest, Facebook, TikTok, YouTube и площадки «Ярмарка мастеров».</p>
-        </article>
+        <article class="card"><span class="step">1</span><h3>Получите готовый запрос</h3><ol><li>Создайте изделие и заполните известные факты.</li><li>Загрузите фото/видео в нужном порядке.</li><li>Откройте «Подготовка с ИИ».</li><li>Нажмите «Скопировать готовый запрос».</li></ol><p class="muted small">Ничего дописывать, подставлять или собирать вручную не нужно.</p></article>
+        <article class="card"><span class="step">2</span><h3>Передайте запрос модели</h3><ol><li>Вставьте запрос как есть.</li><li>Приложите те же файлы в порядке image_1…N.</li><li>Скопируйте один JSON-объект без пояснений.</li></ol></article>
+        <article class="card"><span class="step">3</span><h3>Проверьте результат</h3><p>Вставьте JSON и нажмите «Проверить». Просмотрите <code>needs_confirmation</code> и <code>assumptions</code>. Цена, материалы, размеры, уход и наличие требуют явного подтверждения.</p></article>
+        <article class="card"><span class="step">4</span><h3>Примените и публикуйте</h3><p>Hub заполнит только допустимые пустые поля и сохранит отдельные тексты для Instagram, VK, Telegram, Pinterest, Facebook, TikTok, YouTube и площадки «Ярмарка мастеров».</p></article>
       </section>
 
       <section class="card section-gap">
         <h3>Статического промпта для копирования нет специально</h3>
-        <p>Статический пример неизбежно устаревает и не содержит данных конкретного изделия. Источник истины один: <strong>Изделия → нужное изделие → Подготовка с ИИ → Скопировать готовый запрос</strong>.</p>
+        <p>Источник истины один: <strong>Изделия → нужное изделие → Подготовка с ИИ → Скопировать готовый запрос</strong>.</p>
         <p class="muted">Канонический генератор: <code>app/ai_pack.py::build_prompt()</code>.</p>
         <a class="button primary" href="/products">Перейти к изделиям</a>
       </section>
 
       <section class="hero section-gap" id="connections">
-        <span class="pill">Подключения</span>
-        <h2>Официальная ссылка → callback → подключить</h2>
-        <p>Откройте нужную карточку. Технические поля скрыты, пока вы не выбрали сервис, поэтому страница остаётся компактной и понятной.</p>
+        <span class="pill">Публикация без приложений</span>
+        <h2>Выбрал площадку → получил пакет → вставил</h2>
+        <p>VK, Instagram, Facebook, Pinterest, TikTok и YouTube работают без n8n, developer app и браузерных cookies. Полная API-автоматизация остаётся дополнительным режимом.</p>
       </section>
 
       <section class="grid two">
-        <article class="card">
-          <span class="step">1</span>
-          <h3>Создайте приложение</h3>
-          <p>Нажмите официальную ссылку в карточке сервиса. Для Telegram достаточно открыть BotFather; для остальных площадок создайте Web/OAuth-приложение.</p>
-        </article>
-        <article class="card">
-          <span class="step">2</span>
-          <h3>Скопируйте callback</h3>
-          <p>Hub показывает точный Redirect URI. Скопируйте его без изменений, затем сохраните Client ID и Client Secret в интерфейсе.</p>
-        </article>
-        <article class="card">
-          <span class="step">3</span>
-          <h3>Подключите аккаунт</h3>
-          <p>Нажмите «Подключить аккаунт». Вход выполняется на официальной странице площадки; пароль от соцсети Bamboo не получает.</p>
-        </article>
-        <article class="card">
-          <span class="step">4</span>
-          <h3>ID найдутся автоматически</h3>
-          <p>Pinterest предложит доски, Meta — страницы и связанный Instagram Professional, VK — доступные стены и сообщества. Ручные ID остаются только запасным вариантом.</p>
-        </article>
+        <article class="card"><span class="step">1</span><h3>Оставьте режим «Без приложения»</h3><p>На странице «Подключения» он включён по умолчанию. Никакие callback URL, Client ID или Client Secret не требуются.</p></article>
+        <article class="card"><span class="step">2</span><h3>Создайте публикацию</h3><p>В карточке изделия выберите площадки и медиа. Для TikTok и YouTube API-поля скрываются: параметры видимости и рекламы вы зададите в самой площадке.</p></article>
+        <article class="card"><span class="step">3</span><h3>Откройте готовый пакет</h3><p>В разделе «Публикации» нажмите «Открыть пакет». Там есть кнопка копирования текста, отдельные файлы и ZIP со всеми материалами.</p></article>
+        <article class="card"><span class="step">4</span><h3>Опубликуйте штатно</h3><p>Откройте площадку, вставьте текст, загрузите медиа и нажмите её обычную кнопку публикации. Затем отметьте результат в Bamboo.</p></article>
+      </section>
+
+      <section class="card section-gap">
+        <h3>Почему не cookies</h3>
+        <p>Bamboo не копирует авторизационные cookies и не повторяет закрытые запросы веб-сайтов. Сессия остаётся в вашем браузере, а публикация выполняется через штатный интерфейс площадки.</p>
+        <p class="muted">Это устойчивее и безопаснее: нет хранения полноценной браузерной сессии и зависимости от внутренних endpoint сайта.</p>
+      </section>
+
+      <section class="card section-gap">
+        <h3>Когда нужен автоматический API</h3>
+        <p>Только если требуется публикация полностью без участия человека. Откройте нужную карточку подключения и раскройте «Автоматически через официальный API — расширенный режим».</p>
+        <p class="muted">Telegram остаётся самым простым автоматическим каналом: BotFather → токен → @имя_канала.</p>
+        <a class="button primary" href="/connections">Открыть подключения</a>
       </section>
 
       <section class="card section-gap">
         <h3>Обновление системы</h3>
-        <p>Из каталога проекта запустите <code>./scripts/update.sh</code>. Скрипт сам создаст резервную копию, загрузит актуальный main, пересоберёт контейнер, применит миграции, перезапустит Hub и выполнит smoke test.</p>
-        <div class="actions">
-          <a class="button" href="/connections">Открыть подключения</a>
-          <a class="button primary" href="/products">Открыть изделия</a>
-        </div>
+        <p>Из каталога проекта запустите <code>./scripts/update.sh</code>. Скрипт создаст резервную копию, загрузит актуальный main, пересоберёт контейнер, применит миграции, перезапустит Hub и выполнит smoke test.</p>
       </section>
     </main>
   </div>
 
   <nav class="mobile-nav" aria-label="Мобильная навигация">
-    <a href="/">Обзор</a>
-    <a href="/products">Изделия</a>
-    <a href="/publications">Планы</a>
-    <a href="/connections">Связи</a>
-    <a href="/static/help.html" aria-current="page">Справка</a>
+    <a href="/">Обзор</a><a href="/products">Изделия</a><a href="/publications">Планы</a><a href="/connections">Связи</a><a href="/static/help.html" aria-current="page">Справка</a>
   </nav>
   <script src="/static/app.js"></script>
 </body>

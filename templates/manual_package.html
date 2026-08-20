@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% set heading='Пакет для ' ~ channel_label %}
+{% block top_action %}<a class="button quiet" href="/publications">К публикациям</a>{% endblock %}
+{% block content %}
+<section class="manual-package-hero">
+  <div>
+    <span class="pill">Без developer app</span>
+    <h2>{{ product.name }}</h2>
+    <p>Bamboo уже собрал текст и выбранные медиа. Скопируйте текст, скачайте материалы, откройте {{ channel_label }} и после публикации отметьте результат.</p>
+  </div>
+  {% if delivery.status == 'published' %}
+  <span class="connection-state connected"><span aria-hidden="true"></span>Опубликовано</span>
+  {% else %}
+  <span class="connection-state ready"><span aria-hidden="true"></span>Пакет готов</span>
+  {% endif %}
+</section>
+
+<section class="manual-package-grid">
+  <article class="card manual-copy-card">
+    <div class="card-head">
+      <div><h3>Текст публикации</h3><p class="muted">Готовая версия именно для {{ channel_label }}.</p></div>
+      <button class="button primary" type="button" data-copy="#manual-publication-text">Скопировать текст</button>
+    </div>
+    {% if title_text %}
+    <label>Заголовок<input id="manual-publication-title" readonly value="{{ title_text }}"></label>
+    {% endif %}
+    <textarea id="manual-publication-text" class="manual-publication-text" readonly spellcheck="false">{{ publication_text }}</textarea>
+  </article>
+
+  <aside class="card manual-actions-card">
+    <h3>Что сделать</h3>
+    <ol class="manual-checklist">
+      <li><span>1</span><div><strong>Скачайте материалы</strong><small>ZIP содержит текст и все выбранные файлы.</small></div></li>
+      <li><span>2</span><div><strong>Откройте площадку</strong><small>Вставьте текст и загрузите медиа.</small></div></li>
+      <li><span>3</span><div><strong>Подтвердите результат</strong><small>Bamboo сохранит публикацию в истории.</small></div></li>
+    </ol>
+    <a class="button soft full" href="/publications/{{ publication.id }}/manual/{{ delivery.id }}/package.zip">Скачать всё одним ZIP</a>
+    {% if platform_url %}<a class="button primary full" href="{{ platform_url }}" target="_blank" rel="noopener">Открыть {{ channel_label }}</a>{% endif %}
+  </aside>
+</section>
+
+<section class="card">
+  <div class="card-head"><div><h3>Медиа</h3><p class="muted">Можно скачать весь пакет или отдельные файлы.</p></div><span class="pill">{{ media|length }} файлов</span></div>
+  <div class="manual-media-grid">
+    {% for asset in media %}
+    <article class="manual-media-card">
+      <div class="manual-media-preview">
+        {% if asset.media_type == 'video' %}
+        <video src="/media/{{ asset.id }}" controls preload="metadata"></video>
+        {% else %}
+        <img src="/media/{{ asset.id }}" alt="{{ asset.alt_text or '' }}">
+        {% endif %}
+      </div>
+      <div class="manual-media-meta">
+        <strong>{{ loop.index }}. {{ asset.original_filename }}</strong>
+        <span>{{ (asset.file_size / 1024 / 1024)|round(1) }} МБ</span>
+        <a class="button small-button" href="/publications/{{ publication.id }}/manual/{{ delivery.id }}/media/{{ asset.id }}">Скачать</a>
+      </div>
+    </article>
+    {% else %}
+    <div class="empty wide">Для этой публикации медиа не выбраны.</div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if delivery.status != 'published' %}
+<section class="card manual-complete-card">
+  <div>
+    <h3>Публикация готова?</h3>
+    <p class="muted">Ссылку можно не указывать. Она нужна только для быстрого перехода из истории.</p>
+  </div>
+  <form method="post" action="/publications/{{ publication.id }}/manual/{{ delivery.id }}/complete" class="manual-complete-form">
+    <label>Ссылка на опубликованный пост, необязательно<input name="published_url" type="url" placeholder="https://..."></label>
+    <button class="button primary" type="submit">Отметить как опубликовано</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

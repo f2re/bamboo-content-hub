@@ -1,0 +1,36 @@
+.manual-first-hero{background:linear-gradient(145deg,#fff 0%,#f3f8ff 100%)}
+.mode-section{background:#f7f9fc;border:1px solid #e5eaf1;border-radius:20px;padding:22px!important;margin:8px 0 20px}
+.connection-mode-form{margin-top:16px!important;padding:0!important;border:0!important}
+.mode-explanation{margin:14px 0 0!important;max-width:760px}
+.api-mode-details{border-top:1px solid var(--line);padding-top:2px}
+.api-mode-details>summary{cursor:pointer;list-style:none;padding:20px 0;font-weight:650;color:var(--muted)}
+.api-mode-details>summary::-webkit-details-marker{display:none}
+.api-mode-details>summary::after{content:'›';float:right;font-size:22px;transform:rotate(90deg);transition:transform .2s ease}
+.api-mode-details[open]>summary::after{transform:rotate(-90deg)}
+.api-mode-body{padding-bottom:4px}
+.platform-settings[data-manual-mode="true"]{background:#f7f9fc;border-color:#dce6f2}
+.platform-settings[data-manual-mode="true"]>.button{margin-top:12px}
+.manual-package-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;padding:34px;margin-bottom:24px;border:1px solid var(--line);border-radius:28px;background:linear-gradient(140deg,#fff 0%,#f0f7ff 100%);box-shadow:var(--shadow)}
+.manual-package-hero h2{font-size:clamp(28px,4vw,44px);margin:12px 0 8px;letter-spacing:-.04em}
+.manual-package-hero p{max-width:760px;margin:0;color:var(--muted);font-size:16px}
+.manual-package-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.75fr);gap:20px;align-items:start}
+.manual-publication-text{min-height:360px;font-size:15px;line-height:1.55}
+.manual-actions-card{position:sticky;top:24px;display:grid;gap:12px}
+.manual-actions-card>.button{margin:0}
+.manual-checklist{display:grid;gap:16px;padding:0;margin:4px 0 12px;list-style:none}
+.manual-checklist li{display:grid;grid-template-columns:30px 1fr;gap:12px;align-items:start}
+.manual-checklist li>span{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent2);color:var(--accent);font-weight:700;font-size:12px}
+.manual-checklist div{display:grid;gap:3px}.manual-checklist small{color:var(--muted);line-height:1.4}
+.manual-media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.manual-media-card{overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface2)}
+.manual-media-preview{aspect-ratio:4/3;background:var(--bg);overflow:hidden}
+.manual-media-preview img,.manual-media-preview video{width:100%;height:100%;object-fit:cover}
+.manual-media-meta{display:grid;gap:7px;padding:13px}.manual-media-meta strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.manual-media-meta span{color:var(--muted);font-size:12px}.manual-media-meta .button{justify-self:start}
+.manual-complete-card{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(0,1.3fr);gap:28px;align-items:end}
+.manual-complete-card h3{margin-bottom:7px}.manual-complete-card p{margin:0}
+.manual-complete-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.manual-complete-form label{margin:0}.manual-complete-form .button{min-height:44px}
+.publication-with-actions{grid-template-columns:minmax(160px,1fr) auto minmax(220px,1fr) minmax(190px,auto)}
+.publication-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.publication-actions .button{white-space:nowrap}
+.status.awaiting_manual{color:#9a6700;background:#fff4ce}
+@media(max-width:980px){.manual-package-grid{grid-template-columns:1fr}.manual-actions-card{position:static}.manual-complete-card{grid-template-columns:1fr}.publication-with-actions{grid-template-columns:1fr auto}.publication-with-actions .delivery-list,.publication-with-actions .publication-actions{grid-column:1/-1;justify-content:flex-start}}
+@media(max-width:620px){.manual-package-hero{padding:24px;display:grid}.manual-package-grid{gap:14px}.manual-copy-card .card-head{display:grid;gap:12px}.manual-copy-card .card-head .button{width:100%}.manual-media-grid{grid-template-columns:1fr}.manual-complete-form{grid-template-columns:1fr}.manual-complete-form .button{width:100%}.publication-actions{display:grid}.publication-actions .button{width:100%}}

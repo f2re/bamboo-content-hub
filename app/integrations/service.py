@@ -9,27 +9,47 @@ from ..config import Settings
 from ..models import IntegrationAccount
 from ..oauth import valid_access_token
 from ..security import CredentialCipher
-from .base import PublishError, PublishRequest
+from .base import ConnectorCapabilities, PublishError, PublishRequest
 from .connectors import credential_provider
 from .onboarding import discover_target_choices
 from .registry import CONNECTORS
 
 OAUTH_PROVIDERS = {"meta", "google", "pinterest", "tiktok", "vk"}
+MANUAL_MODE_PROVIDERS = set(OAUTH_PROVIDERS)
 
 PROVIDER_CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "telegram": ("bot_token", "chat_id"),
-    "pinterest": ("oauth_client_id", "oauth_client_secret", "board_id", "board_section_id"),
-    "vk": ("oauth_client_id", "oauth_client_secret", "owner_id"),
+    "pinterest": (
+        "connection_mode",
+        "oauth_client_id",
+        "oauth_client_secret",
+        "board_id",
+        "board_section_id",
+    ),
+    "vk": ("connection_mode", "oauth_client_id", "oauth_client_secret", "owner_id"),
     "meta": (
+        "connection_mode",
         "oauth_client_id",
         "oauth_client_secret",
         "instagram_user_id",
         "facebook_page_id",
     ),
-    "tiktok": ("oauth_client_id", "oauth_client_secret"),
-    "google": ("oauth_client_id", "oauth_client_secret", "youtube_category_id"),
+    "tiktok": ("connection_mode", "oauth_client_id", "oauth_client_secret"),
+    "google": (
+        "connection_mode",
+        "oauth_client_id",
+        "oauth_client_secret",
+        "youtube_category_id",
+    ),
 }
 CONFIG_FIELD_META: dict[str, dict] = {
+    "connection_mode": {
+        "label": "Режим публикации",
+        "type": "text",
+        "placeholder": "manual или automatic",
+        "help": "Без приложения либо автоматически через официальный API.",
+        "phase": "mode",
+    },
     "oauth_client_id": {
         "label": "Client ID / App ID",
         "type": "text",
@@ -127,6 +147,57 @@ _OAUTH_ENV_FIELDS: dict[str, tuple[str, str]] = {
     "vk": ("vk_client_id", "vk_client_secret"),
 }
 
+_MANUAL_CAPABILITIES: dict[str, ConnectorCapabilities] = {
+    "instagram": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=True,
+        videos=True,
+        max_media=10,
+        notes=("Bamboo подготовит пакет для публикации в приложении Instagram.",),
+    ),
+    "facebook": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=True,
+        videos=True,
+        max_media=50,
+        notes=("Bamboo подготовит пакет для публикации на Facebook.",),
+    ),
+    "pinterest": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=True,
+        videos=False,
+        max_media=1,
+        notes=("Bamboo подготовит один Pin для ручной публикации.",),
+    ),
+    "tiktok": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=True,
+        videos=True,
+        max_media=35,
+        notes=("Bamboo подготовит материалы для загрузки в TikTok.",),
+    ),
+    "youtube": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=False,
+        videos=True,
+        max_media=1,
+        notes=("Bamboo подготовит видео и метаданные для YouTube Studio.",),
+    ),
+    "vk": ConnectorCapabilities(
+        automatic=False,
+        text=True,
+        images=True,
+        videos=True,
+        max_media=50,
+        notes=("Bamboo подготовит пост для открытия и публикации во VK.",),
+    ),
+}
+
 
 def provider_account(db: Session, provider: str) -> IntegrationAccount | None:
     return db.scalar(
@@ -142,6 +213,39 @@ def decrypted_credentials(db: Session, settings: Settings, provider: str) -> dic
     if not account or not account.encrypted_credentials:
         return {}
     return CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
+
+
+def _oauth_env_values(settings: Settings, provider: str) -> tuple[str | None, str | None]:
+    attrs = _OAUTH_ENV_FIELDS.get(provider)
+    if not attrs:
+        return None, None
+    return getattr(settings, attrs[0], None), getattr(settings, attrs[1], None)
+
+
+def provider_connection_mode(db: Session, settings: Settings, provider: str) -> str:
+    if provider not in MANUAL_MODE_PROVIDERS:
+        return "automatic"
+    credentials = decrypted_credentials(db, settings, provider)
+    explicit = str(credentials.get("connection_mode") or "").strip().lower()
+    if explicit in {"manual", "automatic"}:
+        return explicit
+    env_client_id, _env_client_secret = _oauth_env_values(settings, provider)
+    if credentials.get("access_token") or credentials.get("oauth_client_id") or env_client_id:
+        return "automatic"
+    return "manual"
+
+
+def manual_channel_capabilities(channel: str) -> ConnectorCapabilities:
+    return _MANUAL_CAPABILITIES.get(
+        channel,
+        ConnectorCapabilities(
+            automatic=False,
+            text=True,
+            images=True,
+            videos=True,
+            max_media=50,
+        ),
+    )
 
 
 def merge_provider_config(
@@ -183,6 +287,10 @@ def merge_provider_config(
         value = values[key]
         if isinstance(value, str):
             value = value.strip()
+        if key == "connection_mode":
+            value = str(value).lower()
+            if value not in {"manual", "automatic"}:
+                raise ValueError("Режим публикации должен быть manual или automatic")
         if key in SECRET_CONFIG_FIELDS and value == "••••••••":
             continue
         if value in (None, ""):
@@ -200,12 +308,15 @@ def merge_provider_config(
         account.expires_at = None
 
     account.encrypted_credentials = CredentialCipher(settings).encrypt_json(credentials)
+    mode = str(credentials.get("connection_mode") or "").lower()
     if provider == "telegram":
         account.status = (
             "connected"
             if credentials.get("bot_token") and credentials.get("chat_id")
             else "configured"
         )
+    elif provider in MANUAL_MODE_PROVIDERS and mode == "manual":
+        account.status = "connected"
     elif credentials.get("access_token") and not oauth_changed:
         account.status = "connected"
     else:
@@ -215,18 +326,14 @@ def merge_provider_config(
     return account
 
 
-def _oauth_env_values(settings: Settings, provider: str) -> tuple[str | None, str | None]:
-    attrs = _OAUTH_ENV_FIELDS.get(provider)
-    if not attrs:
-        return None, None
-    return getattr(settings, attrs[0], None), getattr(settings, attrs[1], None)
-
-
 def public_provider_config(db: Session, settings: Settings, provider: str) -> dict:
     credentials = decrypted_credentials(db, settings, provider)
     env_client_id, env_client_secret = _oauth_env_values(settings, provider)
-    result: dict = {}
+    mode = provider_connection_mode(db, settings, provider)
+    result: dict = {"connection_mode": mode}
     for field in PROVIDER_CONFIG_FIELDS.get(provider, ()):
+        if field == "connection_mode":
+            continue
         value = credentials.get(field)
         if field == "oauth_client_id":
             effective = value or env_client_id
@@ -270,7 +377,18 @@ async def channel_health(db: Session, settings: Settings, channel: str) -> dict:
             "capabilities": None,
         }
     provider = credential_provider(channel)
+    mode = provider_connection_mode(db, settings, provider)
+    if provider in MANUAL_MODE_PROVIDERS and mode == "manual":
+        return {
+            "ok": True,
+            "channel": channel,
+            "message": "Режим без приложения готов: Bamboo подготовит текст и медиа",
+            "details": {"connection_mode": "manual"},
+            "capabilities": asdict(manual_channel_capabilities(channel)),
+        }
+
     config = decrypted_credentials(db, settings, provider)
+    config["connection_mode"] = mode
     if provider in OAUTH_PROVIDERS and config.get("access_token"):
         try:
             config["access_token"] = await valid_access_token(db, settings, provider)

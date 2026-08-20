@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% set heading='Публикации' %}
-{% set publication_labels={'draft':'Черновик','scheduled':'Запланировано','processing':'Публикуется','completed':'Опубликовано','partially_failed':'Опубликовано не везде'} %}
-{% set delivery_labels={'pending':'Ожидает','processing':'Публикуется','published':'Опубликовано','failed':'Ошибка','retry_wait':'Повторим автоматически','manual_action':'Нужно действие'} %}
+{% set publication_labels={'draft':'Черновик','scheduled':'Запланировано','processing':'Публикуется','awaiting_manual':'Ожидает публикации вручную','completed':'Опубликовано','partially_failed':'Опубликовано не везде'} %}
+{% set delivery_labels={'pending':'Ожидает','processing':'Публикуется','published':'Опубликовано','failed':'Ошибка','retry_wait':'Повторим автоматически','manual_action':'Пакет готов'} %}
 {% set channel_labels={'demo':'Проверка','telegram':'Telegram','instagram':'Instagram','vk':'VK','pinterest':'Pinterest','facebook':'Facebook','tiktok':'TikTok','youtube':'YouTube','livemaster':'Ярмарка мастеров'} %}
 {% block content %}
 <section class="card">
-  <div class="card-head"><div><h3>Очередь и история</h3><p class="muted">Каждая площадка выполняется независимо. Ошибка одной не останавливает остальные.</p></div></div>
+  <div class="card-head"><div><h3>Очередь и история</h3><p class="muted">Автоматические площадки отправляются сами. Для режима без приложения здесь появляется готовый пакет.</p></div></div>
   {% for p in publications %}
-  <article class="publication">
+  <article class="publication publication-with-actions">
     <div>
       <strong>{{ products.get(p.product_id).name if products.get(p.product_id) else 'Изделие' }}</strong>
       <div class="muted small">{{ (p.scheduled_at or p.created_at)|local_datetime }}</div>
@@ -17,15 +17,22 @@
       {% for d in p.deliveries %}
       <span title="{{ d.last_error or '' }}">
         {{ channel_labels.get(d.channel, d.channel) }} · {{ delivery_labels.get(d.status, d.status) }}
-        {% if d.external_url %}<a href="{{ d.external_url }}" target="_blank" rel="noopener">↗</a>{% endif %}
+        {% if d.external_url and d.status != 'manual_action' %}<a href="{{ d.external_url }}" target="_blank" rel="noopener">↗</a>{% endif %}
       </span>
       {% endfor %}
     </div>
-    {% if p.status in ['draft','scheduled','partially_failed'] %}
-    <button class="button small-button" data-publish="{{ p.id }}">
-      {% if p.status == 'partially_failed' %}Повторить ошибки{% else %}Запустить{% endif %}
-    </button>
-    {% endif %}
+    <div class="publication-actions">
+      {% for d in p.deliveries %}
+        {% if d.status == 'manual_action' %}
+        <a class="button primary small-button" href="/publications/{{ p.id }}/manual/{{ d.id }}">Открыть пакет · {{ channel_labels.get(d.channel, d.channel) }}</a>
+        {% endif %}
+      {% endfor %}
+      {% if p.status in ['draft','scheduled','partially_failed'] %}
+      <button class="button small-button" data-publish="{{ p.id }}">
+        {% if p.status == 'partially_failed' %}Повторить ошибки{% else %}Запустить{% endif %}
+      </button>
+      {% endif %}
+    </div>
   </article>
   {% else %}
   <div class="empty">Публикаций пока нет. Откройте изделие, выберите площадки и нажмите «Опубликовать».</div>
