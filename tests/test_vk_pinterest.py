@@ -34,7 +34,11 @@ def pinterest_request(path):
         text="Описание",
         media=(media(path),),
         config={"access_token": "pin-secret", "board_id": "board-1"},
-        content={"title": "Чашка", "description": "Описание", "destination_url": "https://example.com/cup"},
+        content={
+            "title": "Чашка",
+            "description": "Описание",
+            "destination_url": "https://example.com/cup",
+        },
         idempotency_key="pin-key",
     )
 
@@ -57,7 +61,10 @@ async def test_vk_photo_upload_and_wall_post(tmp_path):
             params = parse_qs((await request.aread()).decode())
             assert params["group_id"] == ["123"]
             assert params["v"] == ["5.199"]
-            return httpx.Response(200, json={"response": {"upload_url": "https://upload.vk.test/photo"}})
+            return httpx.Response(
+                200,
+                json={"response": {"upload_url": "https://upload.vk.test/photo"}},
+            )
         if request.url.host == "upload.vk.test":
             return httpx.Response(200, json={"server": 7, "photo": "[]", "hash": "abc"})
         if path.endswith("/photos.saveWallPhoto"):
@@ -69,6 +76,7 @@ async def test_vk_photo_upload_and_wall_post(tmp_path):
             assert params["attachments"] == ["photo-123_55"]
             assert params["from_group"] == ["1"]
             assert params["owner_id"] == ["-123"]
+            assert params["guid"] == ["vk-key"]
             return httpx.Response(200, json={"response": {"post_id": 77}})
         raise AssertionError(path)
 

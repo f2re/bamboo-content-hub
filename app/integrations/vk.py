@@ -157,21 +157,35 @@ class VKConnector:
                     str(upload_info["upload_url"]),
                     files={"photo": (Path(media.path).name, handle, media.mime_type)},
                 )
+        except OSError as exc:
+            raise PermanentPublishError("Не удалось прочитать изображение VK") from exc
         except httpx.RequestError as exc:
             raise TransientPublishError(f"VK photo upload network error: {type(exc).__name__}") from exc
+        if upload_response.status_code >= 500 or upload_response.status_code in {408, 429}:
+            raise TransientPublishError(
+                f"VK photo upload returned HTTP {upload_response.status_code}"
+            )
         if not upload_response.is_success:
-            raise TransientPublishError(f"VK photo upload returned HTTP {upload_response.status_code}")
+            raise PermanentPublishError(
+                f"VK photo upload returned HTTP {upload_response.status_code}"
+            )
         try:
             uploaded = upload_response.json()
         except ValueError as exc:
             raise TransientPublishError("VK photo upload returned invalid JSON") from exc
-        if not isinstance(uploaded, dict) or not all(key in uploaded for key in ("server", "photo", "hash")):
+        if not isinstance(uploaded, dict) or not all(
+            key in uploaded for key in ("server", "photo", "hash")
+        ):
             raise TransientPublishError("VK photo upload returned incomplete response")
 
         save_params.update(
             {
                 "server": uploaded["server"],
-                "photo": uploaded["photo"] if isinstance(uploaded["photo"], str) else json.dumps(uploaded["photo"]),
+                "photo": (
+                    uploaded["photo"]
+                    if isinstance(uploaded["photo"], str)
+                    else json.dumps(uploaded["photo"])
+                ),
                 "hash": uploaded["hash"],
             }
         )
@@ -197,6 +211,8 @@ class VKConnector:
             params: dict = {
                 "owner_id": owner_id,
                 "message": request.text,
+                # VK API 5.199 exposes guid specifically to prevent duplicate wall posts.
+                "guid": request.idempotency_key,
             }
             if attachments:
                 params["attachments"] = ",".join(attachments)
