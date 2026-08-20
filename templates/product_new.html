@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% set heading='Новое изделие' %}
+{% block top_action %}<a class="button quiet" href="/products">Отмена</a>{% endblock %}
+{% block content %}
+<section class="card compact-form-card">
+  <div class="card-head">
+    <div>
+      <h3>Добавьте изделие</h3>
+      <p class="muted">Сначала достаточно названия. Фото, характеристики и тексты площадок добавляются на следующем экране.</p>
+    </div>
+  </div>
+  <form method="post" action="/products" class="dialog-form product-create-form">
+    <label>
+      Название
+      <input name="name" required autofocus maxlength="240" placeholder="Например, чашка «Туман»">
+    </label>
+    <div class="actions">
+      <a class="button" href="/products">Назад</a>
+      <button class="button primary" type="submit">Создать изделие</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
