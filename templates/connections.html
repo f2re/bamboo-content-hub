@@ -3,7 +3,7 @@
 {% block content %}
 <section class="card connection-intro">
   <h3>Подключите только нужные площадки</h3>
-  <p class="muted">Секреты и токены хранятся зашифрованно и после сохранения не показываются. Для OAuth-площадок сначала один раз создайте приложение у провайдера и внесите Client ID/Secret в <code>.env</code>, затем нажмите «Подключить».</p>
+  <p class="muted">Секреты и токены хранятся зашифрованно и после сохранения не показываются. Для OAuth-площадок сначала один раз создайте приложение у провайдера и внесите Client ID/Secret в <code>.env</code>, затем нажмите «Подключить». После OAuth хаб сам предложит доступные страницы Meta и доски Pinterest — искать их ID вручную не нужно.</p>
 </section>
 <section class="connection-grid">
   {% for item in integrations %}
@@ -29,9 +29,9 @@
       <p>Создайте OAuth-приложение и укажите этот callback URL в настройках провайдера:</p>
       <div class="callback-box"><code id="callback-{{ item.provider }}">{{ app_base_url }}/oauth/{{ item.provider }}/callback</code><button class="button small-button" type="button" data-copy="#callback-{{ item.provider }}">Скопировать</button></div>
       {% if item.provider == 'google' %}<p><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> → включите YouTube Data API → OAuth Web Application. В <code>.env</code>: <code>GOOGLE_CLIENT_ID</code> и <code>GOOGLE_CLIENT_SECRET</code>.</p>{% endif %}
-      {% if item.provider == 'pinterest' %}<p><a href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener">Pinterest Developers</a> → создайте приложение. В <code>.env</code>: <code>PINTEREST_CLIENT_ID</code> и <code>PINTEREST_CLIENT_SECRET</code>.</p>{% endif %}
+      {% if item.provider == 'pinterest' %}<p><a href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener">Pinterest Developers</a> → создайте приложение. В <code>.env</code>: <code>PINTEREST_CLIENT_ID</code> и <code>PINTEREST_CLIENT_SECRET</code>. После OAuth нажмите «Проверить Pinterest» и выберите доску из списка.</p>{% endif %}
       {% if item.provider == 'tiktok' %}<p><a href="https://developers.tiktok.com/" target="_blank" rel="noopener">TikTok for Developers</a> → Login Kit + Content Posting API. В <code>.env</code>: <code>TIKTOK_CLIENT_ID</code> и <code>TIKTOK_CLIENT_SECRET</code>. Для фото нужен подтверждённый публичный HTTPS-домен.</p>{% endif %}
-      {% if item.provider == 'meta' %}<p><a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a> → создайте приложение для Instagram/Facebook Login. В <code>.env</code>: <code>META_CLIENT_ID</code> и <code>META_CLIENT_SECRET</code>.</p>{% endif %}
+      {% if item.provider == 'meta' %}<p><a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Meta for Developers</a> → создайте приложение для Instagram/Facebook Login. В <code>.env</code>: <code>META_CLIENT_ID</code> и <code>META_CLIENT_SECRET</code>. После OAuth нажмите проверку Facebook или Instagram и выберите доступную Page — связанный Instagram определяется автоматически.</p>{% endif %}
       {% if item.provider == 'vk' %}<p><a href="https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/create-application" target="_blank" rel="noopener">VK ID</a> → создайте приложение. В <code>.env</code>: <code>VK_CLIENT_ID</code> и <code>VK_CLIENT_SECRET</code>.</p>{% endif %}
       <p>После изменения <code>.env</code> перезапустите контейнер, затем нажмите «Подключить».</p>
       {% endif %}
@@ -90,4 +90,5 @@
   </article>
   {% endfor %}
 </section>
+<script src="/static/integration-pickers.js"></script>
 {% endblock %}
