@@ -12,6 +12,7 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: python -m compileall -q app tests
+      - run: for file in static/*.js; do node --check "$file"; done
       - run: mkdir -p data/media && alembic upgrade head
       - run: pytest
   docker:
