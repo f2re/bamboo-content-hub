@@ -3,13 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
-from .application import templates
+from .application import app, templates
 
 APP_RELEASE = "0.3.0"
 FEATURE_MARKER = "manual-first-browser-assist"
 
-# Jinja globals keep cache-busting and the visible build marker consistent
-# without duplicating context code across every route.
+# Keep API metadata, cache-busting and the visible build marker synchronized.
+app.version = APP_RELEASE
 templates.env.globals["app_release"] = APP_RELEASE
 templates.env.globals["feature_marker"] = FEATURE_MARKER
 
