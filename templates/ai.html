@@ -1,19 +1,20 @@
 {% extends 'base.html' %}
 {% set heading='Подготовка с ИИ' %}
+{% block top_action %}<a class="button" href="/static/help.html#ai-workflow">Как это работает</a>{% endblock %}
 {% block content %}
 <section class="grid two">
   <article class="card">
     <span class="step">1</span>
-    <h3>Скопируйте запрос</h3>
-    <p class="muted">Добавьте к нему фотографии изделия в том же порядке, что в карточке. Первый кадр — <strong>image_1</strong>, второй — <strong>image_2</strong> и так далее.</p>
+    <h3>Скопируйте рабочий запрос</h3>
+    <p class="muted">Хаб уже добавил request_id, известные факты, порядок медиа, правила площадок и актуальную JSON Schema. Приложите те же фото/видео в том же порядке: первый кадр — <strong>image_1</strong>, второй — <strong>image_2</strong> и так далее.</p>
     <textarea id="prompt" class="code" readonly>{{prompt}}</textarea>
     <button class="button full" data-copy="#prompt">Скопировать запрос</button>
   </article>
   <article class="card">
     <span class="step">2</span>
-    <h3>Вставьте ответ</h3>
-    <p class="muted">Подойдёт ChatGPT, DeepSeek, Claude или другая модель, которая вернула Bamboo Content Pack. Нажмите «Проверить», чтобы увидеть понятное резюме до импорта.</p>
-    <textarea id="ai-answer" class="code" placeholder='Вставьте JSON-ответ модели'></textarea>
+    <h3>Проверьте и импортируйте ответ</h3>
+    <p class="muted">Подойдёт мультимодальная модель, которая умеет анализировать ваши медиа и возвращать строгий JSON. Сначала нажмите «Проверить»: хаб покажет понятное резюме, вопросы и предположения без необходимости читать сырой JSON.</p>
+    <textarea id="ai-answer" class="code" placeholder="Вставьте JSON-ответ модели"></textarea>
     <div class="actions">
       <button class="button" data-preview="{{product.id}}">Проверить</button>
       <button class="button primary" data-import="{{product.id}}">Импортировать</button>
