@@ -13,7 +13,7 @@ def test_help_covers_ai_and_manual_connection_workflows(client):
     assert "Статического промпта для копирования нет специально" in page.text
     assert "Скопировать основу" not in page.text
     assert "Выбрал площадку → получил пакет → вставил" in page.text
-    assert "Без n8n" in page.text
+    assert "без n8n" in page.text
     assert "Почему не cookies" in page.text
     assert "Автоматически через официальный API" in page.text
     assert 'href="/connections"' in page.text
