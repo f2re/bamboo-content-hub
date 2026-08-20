@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- `update.sh` стал отказоустойчивым: до обновления фиксируются Git SHA и backup, а любая ошибка build/migration/restart/healthcheck автоматически возвращает прежний код и восстанавливает SQLite/медиа.
+- Backup-архивы получили collision-safe имена и `backup-meta.txt`; `restore.sh` проверяет tar/SQLite до остановки сервиса и повторно проверяет БД после восстановления.
+- `smoke.sh` проверяет локальный readiness с повторами, а `install.sh` завершается успешно только после реальной готовности приложения.
+- CI расширен Bash syntax/Compose config и lifecycle job: clean install → backup → restore → fault-injected failed update → automatic rollback → healthcheck.
+- Добавлены публикация Docker image в GHCR для `main` и тегов `v*`, Dependabot для Python/Actions/Docker и отдельный release checklist.
+- Compose поддерживает единое имя образа через `BAMBOO_IMAGE`, сохраняя локальную сборку по умолчанию.
+- `backups/` исключён из Git: локальные резервные копии больше не блокируют последующие безопасные обновления.
 - Перед фактической публикацией хаб проверяет выбранные подключения и совместимость медиа: недоступный канал, неподходящий тип/число файлов или незавершённый выбор аккаунта показываются до отправки, а не после ошибки delivery.
 - CI теперь проверяет синтаксис всех browser JavaScript-файлов через `node --check`.
 - AI prompt на странице изделия теперь представлен как один полный runtime-запрос: текущий `request_id`, факты, media mapping `image_1...N`, правила площадок и актуальная JSON Schema — сценарий сводится к «скопировать → вставить → проверить → применить».

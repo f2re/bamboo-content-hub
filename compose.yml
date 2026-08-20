@@ -1,5 +1,6 @@
 services:
   bamboo:
+    image: ${BAMBOO_IMAGE:-bamboo-content-hub:local}
     build: .
     restart: unless-stopped
     env_file: .env

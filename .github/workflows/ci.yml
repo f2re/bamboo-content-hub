@@ -2,6 +2,7 @@ name: CI
 on:
   push:
   pull_request:
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,8 +14,11 @@ jobs:
       - run: ruff check .
       - run: python -m compileall -q app tests
       - run: for file in static/*.js; do node --check "$file"; done
+      - run: bash -n scripts/*.sh
+      - run: cp .env.example .env && docker compose -f compose.yml config >/dev/null
       - run: mkdir -p data/media && alembic upgrade head
       - run: pytest
+
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -25,3 +29,33 @@ jobs:
           context: .
           push: false
           tags: bamboo-content-hub:test
+
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clean install and healthcheck
+        run: ./scripts/install.sh
+      - name: Backup and restore round-trip
+        run: |
+          backup=$(./scripts/backup.sh | tail -n1)
+          test -s "$backup"
+          ./scripts/restore.sh "$backup"
+      - name: Failed update rolls back automatically
+        run: |
+          before=$(git rev-parse HEAD)
+          if BAMBOO_UPDATE_FAILPOINT=after_migration ./scripts/update.sh; then
+            echo "Expected the CI failpoint to fail the update" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$before"
+          ./scripts/smoke.sh
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose -f compose.yml logs --no-color bamboo || true
+      - name: Cleanup
+        if: always()
+        run: docker compose -f compose.yml down --remove-orphans || true
