@@ -46,8 +46,9 @@ async def test_meta_health_offers_page_picker_and_discovers_instagram():
         )
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client, SessionLocal() as db:
-        result = await channel_health(db, get_settings(), "instagram", client=client)
+    async with httpx.AsyncClient(transport=transport) as client:
+        with SessionLocal() as db:
+            result = await channel_health(db, get_settings(), "instagram", client=client)
 
     assert result["ok"] is False
     assert result["details"]["select_field"] == "facebook_page_id"
@@ -101,8 +102,9 @@ async def test_pinterest_health_offers_board_picker_without_manual_id():
         )
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client, SessionLocal() as db:
-        result = await channel_health(db, get_settings(), "pinterest", client=client)
+    async with httpx.AsyncClient(transport=transport) as client:
+        with SessionLocal() as db:
+            result = await channel_health(db, get_settings(), "pinterest", client=client)
 
     assert result["details"]["select_field"] == "board_id"
     assert result["details"]["options"][0] == {"value": "board-1", "label": "Керамика"}
@@ -123,8 +125,9 @@ async def test_pinterest_health_offers_sections_after_board_is_selected():
         raise AssertionError(str(request.url))
 
     transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client, SessionLocal() as db:
-        result = await channel_health(db, get_settings(), "pinterest", client=client)
+    async with httpx.AsyncClient(transport=transport) as client:
+        with SessionLocal() as db:
+            result = await channel_health(db, get_settings(), "pinterest", client=client)
 
     assert result["ok"] is True
     assert result["details"]["secondary_select_field"] == "board_section_id"
