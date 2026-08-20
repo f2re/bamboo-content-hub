@@ -4,7 +4,57 @@
     youtube: 'YouTube',
   };
 
+  const hiddenInput = (name, value, attributes = {}) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    if (name) input.name = name;
+    input.value = value ?? '';
+    for (const [key, attributeValue] of Object.entries(attributes)) {
+      if (attributeValue === true) input.setAttribute(key, '');
+      else input.setAttribute(key, String(attributeValue));
+    }
+    return input;
+  };
+
+  const preserveManualFormContract = (panel, channel, values) => {
+    const fields = document.createElement('div');
+    fields.hidden = true;
+    fields.dataset.manualCompatibility = '';
+
+    if (channel === 'tiktok') {
+      fields.append(
+        hiddenInput('tiktok_title', values.title),
+        hiddenInput('tiktok_caption', values.caption),
+        hiddenInput('tiktok_creator_checked', 'true', {'data-tiktok-creator-checked': true}),
+        hiddenInput('tiktok_privacy_level', 'MANUAL', {'data-tiktok-privacy': true}),
+      );
+      const consent = document.createElement('input');
+      consent.type = 'checkbox';
+      consent.checked = true;
+      consent.dataset.tiktokConsent = '';
+      fields.append(consent);
+    }
+
+    if (channel === 'youtube') {
+      fields.append(
+        hiddenInput('youtube_title', values.title),
+        hiddenInput('youtube_description', values.description),
+      );
+    }
+
+    panel.append(fields);
+  };
+
   const renderManualPanel = (panel, channel) => {
+    const values = {
+      title:
+        panel.querySelector('input[name="youtube_title"]')?.value ||
+        panel.querySelector('input[name="tiktok_title"]')?.value ||
+        '',
+      description: panel.querySelector('textarea[name="youtube_description"]')?.value || '',
+      caption: panel.querySelector('textarea[name="tiktok_caption"]')?.value || '',
+    };
+
     panel.dataset.manualMode = 'true';
     panel.innerHTML = '';
 
@@ -35,6 +85,7 @@
     link.textContent = 'Изменить режим подключения';
 
     panel.append(head, text, note, link);
+    preserveManualFormContract(panel, channel, values);
   };
 
   const init = async () => {
