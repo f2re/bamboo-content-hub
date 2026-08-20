@@ -196,7 +196,7 @@ async def _meta_page_picker(
             f"{META_GRAPH_BASE}/me/accounts",
             headers={"Authorization": f"Bearer {config['access_token']}"},
             params={
-                "fields": "id,name,instagram_business_account{id,username}",
+                "fields": "id,name,instagram_business_account",
                 "limit": 100,
             },
         )
@@ -228,9 +228,7 @@ async def _meta_page_picker(
             continue
         name = str(page.get("name") or page["id"])
         if channel == "instagram" and isinstance(instagram, dict):
-            username = str(instagram.get("username") or "").strip()
-            if username:
-                name = f"{name} · @{username}"
+            name = f"{name} · Instagram подключён"
         options.append({"value": str(page["id"]), "label": name})
     message = (
         "Выберите страницу, связанную с Instagram Professional account"
@@ -238,9 +236,7 @@ async def _meta_page_picker(
         else "Выберите Facebook Page"
     )
     if not options:
-        message = (
-            "Meta не вернул подходящих страниц. Проверьте доступы приложения и тип аккаунта."
-        )
+        message = "Meta не вернул подходящих страниц. Проверьте доступы приложения и тип аккаунта."
     return {
         "ok": False,
         "channel": channel,
