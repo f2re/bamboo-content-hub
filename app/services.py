@@ -254,7 +254,14 @@ def apply_ai_pack(
     pack: BambooContentPack,
     confirmed_paths: set[str] | None = None,
 ) -> Product:
-    confirmed_paths = set(confirmed_paths or ())
+    if confirmed_paths is None:
+        confirmed_paths = {
+            item.path
+            for item in pack.needs_confirmation
+            if getattr(item, "confirmed", False) and getattr(item, "proof", None)
+        }
+    else:
+        confirmed_paths = set(confirmed_paths)
     review = build_ai_review(product, pack)
     required_paths = {item["path"] for item in review["required_confirmation"]}
     blocked_paths = required_paths - confirmed_paths
