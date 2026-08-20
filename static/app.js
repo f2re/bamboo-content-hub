@@ -23,6 +23,34 @@ const errorMessage = (body, fallback = 'Не удалось выполнить �
   return fallback;
 };
 
+const copyText = async (source) => {
+  const text = 'value' in source ? source.value : source.textContent || '';
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const active = document.activeElement;
+  let target = source;
+  let temporary = false;
+  if (!(source instanceof HTMLTextAreaElement) && !(source instanceof HTMLInputElement)) {
+    target = document.createElement('textarea');
+    target.value = text;
+    target.setAttribute('readonly', '');
+    target.style.position = 'fixed';
+    target.style.opacity = '0';
+    document.body.append(target);
+    temporary = true;
+  }
+  target.focus();
+  target.select();
+  if (target.setSelectionRange) target.setSelectionRange(0, text.length);
+  const copied = document.execCommand('copy');
+  if (temporary) target.remove();
+  if (active?.focus) active.focus();
+  if (!copied) throw new Error('copy failed');
+};
+
 const healthText = (body) => {
   const details = body?.details || {};
   const account = details.nickname || details.title || details.username || '';
@@ -268,10 +296,30 @@ document.addEventListener('click', async (event) => {
   const copy = event.target.closest('[data-copy]');
   if (copy) {
     const source = $(copy.dataset.copy);
-    if (source) await navigator.clipboard.writeText(source.value);
+    if (!source) return;
     const original = copy.textContent;
-    copy.textContent = 'Скопировано';
-    setTimeout(() => (copy.textContent = original), 1200);
+    copy.disabled = true;
+    try {
+      await copyText(source);
+      copy.textContent = 'Скопировано — вставьте в ИИ';
+    } catch (_error) {
+      copy.textContent = 'Не удалось скопировать';
+    } finally {
+      setTimeout(() => {
+        copy.textContent = original;
+        copy.disabled = false;
+      }, 1600);
+    }
+    return;
+  }
+
+  const reloadPrompt = event.target.closest('[data-reload-prompt]');
+  if (reloadPrompt) {
+    reloadPrompt.disabled = true;
+    reloadPrompt.textContent = 'Обновляю…';
+    const status = $('[data-prompt-status]');
+    if (status) status.textContent = 'Формирую запрос заново из текущей карточки…';
+    location.reload();
     return;
   }
 

@@ -41,14 +41,19 @@ def test_deep_fill_human_wins():
     ) == {"price": 4200, "name": "Туман"}
 
 
-def test_prompt_contains_editorial_and_channel_specific_rules():
+def test_prompt_is_complete_runtime_contract_for_all_requested_channels():
     prompt = build_prompt(
         "REQ-2",
         2,
-        {"name": "Чашка"},
+        {"name": "Чашка", "price": {"amount": 3900, "currency": "RUB"}},
         ["instagram", "telegram", "tiktok", "youtube", "livemaster"],
     )
+    assert "ЗАДАЧА" in prompt
+    assert "Контракт ответа:" in prompt
+    assert "request_id: REQ-2" in prompt
     assert "image_1, image_2" in prompt
+    assert "полный пакет со всеми корневыми разделами" in prompt
+    assert "В media.images верни по одному элементу" in prompt
     assert "Не копируй один и тот же текст" in prompt
     assert "Instagram —" in prompt
     assert "Telegram —" in prompt
@@ -56,3 +61,11 @@ def test_prompt_contains_editorial_and_channel_specific_rules():
     assert "YouTube —" in prompt
     assert "Ярмарка мастеров —" in prompt
     assert "Не выдумывай URL" in prompt
+    assert '"amount": 3900' in prompt
+    assert '"title": "BambooContentPack"' in prompt
+
+
+def test_prompt_without_media_explicitly_requires_empty_media_section():
+    prompt = build_prompt("REQ-3", 0, {"name": "Ваза"}, ["instagram"])
+    assert "Технические идентификаторы вложений в порядке прикрепления: нет медиа" in prompt
+    assert "media.images=[], media.order=[]" in prompt
