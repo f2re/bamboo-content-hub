@@ -149,6 +149,7 @@ class Media(StrictModel):
 class Confirmation(StrictModel):
     path: str
     question: str
+    value: Any = None
     proof: str | None = None
     confirmed: bool = False
 
@@ -183,7 +184,7 @@ EDITORIAL_GUIDE = """Правила подготовки контента:
 8. Не выдумывай URL. button_url и destination_url заполняй только если ссылка дана во входных данных; иначе оставляй пустую строку.
 9. Параметры публикации и согласия, которые должен выбрать человек, не угадывай. В частности, channels.tiktok.privacy оставляй null.
 10. Для media используй только переданные идентификаторы image_1...N; не создавай несуществующие ссылки. alt_text должен кратко и фактически описывать медиа для доступности.
-11. Поля needs_confirmation[].proof и needs_confirmation[].confirmed служебные: никогда не заполняй proof и всегда оставляй confirmed=false. Их добавляет Bamboo Content Hub после проверки ответа."""
+11. Поля needs_confirmation[].value/proof/confirmed служебные: никогда не заполняй value/proof и всегда оставляй confirmed=false. Их добавляет Bamboo Content Hub после проверки ответа."""
 
 
 CHANNEL_GUIDE = {
@@ -236,6 +237,18 @@ def _nested_get(data: dict, path: str) -> Any:
     return current
 
 
+def _product_path_set(product: ProductPack, path: str, value: Any) -> None:
+    current: Any = product
+    parts = path.split(".")
+    for part in parts[:-1]:
+        current = getattr(current, part)
+    setattr(current, parts[-1], value)
+
+
+def _empty_value(value: Any) -> Any:
+    return [] if isinstance(value, list) else None
+
+
 def _has_value(value: Any) -> bool:
     return value not in (None, "", [], {})
 
@@ -258,28 +271,41 @@ def _protect_critical_confirmations(pack: BambooContentPack) -> BambooContentPac
     incoming = pack.product.model_dump()
     by_path = {item.path: item for item in pack.needs_confirmation}
     for relative_path, label in CRITICAL_CONFIRMATION_FIELDS.items():
-        value = _nested_get(incoming, relative_path)
-        if not _has_value(value):
-            continue
         path = f"product.{relative_path}"
-        expected_proof = _confirmation_proof(pack.request_id, path, value)
+        model_value = _nested_get(incoming, relative_path)
         item = by_path.get(path)
-        if item and item.proof and hmac.compare_digest(item.proof, expected_proof):
+
+        # A value returned from a previous preview is accepted only with the server proof.
+        if item and item.proof and _has_value(item.value):
+            expected = _confirmation_proof(pack.request_id, path, item.value)
+            if hmac.compare_digest(item.proof, expected):
+                if item.confirmed:
+                    _product_path_set(pack.product, relative_path, item.value)
+                else:
+                    _product_path_set(pack.product, relative_path, _empty_value(item.value))
+                continue
+
+        if not _has_value(model_value):
             continue
-        question = f"Подтвердите {label}: {_display_confirmation_value(value)}"
+
+        proof = _confirmation_proof(pack.request_id, path, model_value)
+        question = f"Подтвердите {label}: {_display_confirmation_value(model_value)}"
         if item:
             item.question = question
-            item.proof = expected_proof
+            item.value = model_value
+            item.proof = proof
             item.confirmed = False
         else:
             item = Confirmation(
                 path=path,
                 question=question,
-                proof=expected_proof,
+                value=model_value,
+                proof=proof,
                 confirmed=False,
             )
             pack.needs_confirmation.append(item)
             by_path[path] = item
+        _product_path_set(pack.product, relative_path, _empty_value(model_value))
     return pack
 
 
