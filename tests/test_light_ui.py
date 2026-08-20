@@ -33,6 +33,6 @@ def test_connections_are_progressive_manual_first_and_not_four_dense_columns(cli
 
     enhancement = client.get("/static/connections-enhance.js")
     assert enhancement.status_code == 200
-    assert "data-connection-card" not in enhancement.text  # DOM API is used instead of unsafe HTML.
+    assert "document.createElement('article')" in enhancement.text
     assert "livemaster" in enhancement.text
     assert "Нужно только для автоматического API-режима" in enhancement.text
