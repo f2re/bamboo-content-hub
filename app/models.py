@@ -18,6 +18,7 @@ class PublicationStatus(str, enum.Enum):
     draft = "draft"
     scheduled = "scheduled"
     processing = "processing"
+    awaiting_manual = "awaiting_manual"
     completed = "completed"
     partially_failed = "partially_failed"
 
