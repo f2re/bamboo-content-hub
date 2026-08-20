@@ -46,6 +46,7 @@
   };
 
   const renderManualPanel = (panel, channel) => {
+    if (panel.dataset.manualMode === 'true') return;
     const values = {
       title:
         panel.querySelector('input[name="youtube_title"]')?.value ||
@@ -88,10 +89,19 @@
     preserveManualFormContract(panel, channel, values);
   };
 
+  const serverMode = (channel) => document.body.dataset[`manual${channel[0].toUpperCase()}${channel.slice(1)}`];
+
   const init = async () => {
     for (const panel of document.querySelectorAll('[data-channel-settings]')) {
       const channel = panel.dataset.channelSettings;
       if (!['tiktok', 'youtube'].includes(channel)) continue;
+
+      if (serverMode(channel) === 'true') {
+        renderManualPanel(panel, channel);
+        continue;
+      }
+      if (serverMode(channel) === 'false') continue;
+
       try {
         const response = await fetch(`/api/integrations/${channel}/health`);
         const body = await response.json();
