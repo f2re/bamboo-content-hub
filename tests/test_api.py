@@ -46,7 +46,9 @@ def test_connection_settings_are_exposed_and_persisted(client):
     assert page.status_code == 200
     assert 'data-integration-form' in page.text
     assert 'name="board_id"' in page.text
-    assert 'name="instagram_user_id"' in page.text
+    assert 'name="facebook_page_id"' in page.text
+    assert 'name="instagram_user_id"' not in page.text
+    assert "ID вручную не нужно" in page.text
 
     response = client.post(
         "/api/integrations/pinterest/config",
