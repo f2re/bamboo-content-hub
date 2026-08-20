@@ -93,7 +93,14 @@ def _create_product_with_video(client):
     return product_id, media_id
 
 
-def test_publication_stores_explicit_tiktok_and_youtube_choices(client):
+def test_publication_stores_explicit_tiktok_and_youtube_choices_in_automatic_mode(client):
+    for provider in ("tiktok", "google"):
+        response = client.post(
+            f"/api/integrations/{provider}/config",
+            json={"connection_mode": "automatic"},
+        )
+        assert response.status_code == 200
+
     product_id, media_id = _create_product_with_video(client)
 
     missing_consent = client.post(
@@ -143,10 +150,23 @@ def test_publication_stores_explicit_tiktok_and_youtube_choices(client):
         assert {delivery.channel for delivery in publication.deliveries} == {"tiktok", "youtube"}
 
 
-def test_connection_health_endpoint_returns_structured_failure(client):
-    response = client.get("/api/integrations/tiktok/health")
+def test_connection_health_endpoint_reports_manual_readiness_and_automatic_failure(client):
+    manual = client.get("/api/integrations/tiktok/health")
+    assert manual.status_code == 200
+    manual_body = manual.json()
+    assert manual_body["ok"] is True
+    assert manual_body["channel"] == "tiktok"
+    assert manual_body["capabilities"]["automatic"] is False
+    assert manual_body["capabilities"]["videos"] is True
+
+    response = client.post(
+        "/api/integrations/tiktok/config",
+        json={"connection_mode": "automatic"},
+    )
     assert response.status_code == 200
-    body = response.json()
+    automatic = client.get("/api/integrations/tiktok/health")
+    assert automatic.status_code == 200
+    body = automatic.json()
     assert body["ok"] is False
     assert body["channel"] == "tiktok"
     assert body["capabilities"]["videos"] is True
