@@ -9,6 +9,7 @@ from .config import Settings
 from .integrations.base import MediaInput, PermanentPublishError, PublishRequest, TransientPublishError
 from .integrations.connectors import credential_provider
 from .integrations.registry import CONNECTORS
+from .integrations.service import provider_connection_mode
 from .models import Delivery, DeliveryStatus, IntegrationAccount, MediaAsset, Publication, PublicationStatus
 from .oauth import valid_access_token
 from .security import CredentialCipher, safe_media_path, sign_media_token
@@ -20,7 +21,13 @@ MAX_STATUS_POLLS = 20
 
 def channel_text(publication: Publication, channel: str) -> str:
     content = (publication.channel_content or {}).get(channel) or {}
-    text = content.get("caption") or content.get("text") or content.get("description") or content.get("title") or ""
+    text = (
+        content.get("caption")
+        or content.get("text")
+        or content.get("description")
+        or content.get("title")
+        or ""
+    )
     hashtags = content.get("hashtags") or []
     if hashtags:
         normalized = []
@@ -36,10 +43,12 @@ def channel_text(publication: Publication, channel: str) -> str:
 def _update_publication_status(db: Session, publication: Publication) -> None:
     db.expire(publication, ["deliveries"])
     statuses = [d.status for d in publication.deliveries]
-    if statuses and all(s in (DeliveryStatus.published.value, DeliveryStatus.manual_action.value) for s in statuses):
+    if statuses and all(s == DeliveryStatus.published.value for s in statuses):
         publication.status = PublicationStatus.completed.value
     elif any(s == DeliveryStatus.failed.value for s in statuses):
         publication.status = PublicationStatus.partially_failed.value
+    elif any(s == DeliveryStatus.manual_action.value for s in statuses):
+        publication.status = PublicationStatus.awaiting_manual.value
     else:
         publication.status = PublicationStatus.processing.value
     db.commit()
@@ -52,7 +61,11 @@ async def build_publish_request(
     delivery: Delivery,
 ) -> PublishRequest:
     selected = publication.selected_media_ids or []
-    media_rows = list(db.scalars(select(MediaAsset).where(MediaAsset.id.in_(selected)))) if selected else []
+    media_rows = (
+        list(db.scalars(select(MediaAsset).where(MediaAsset.id.in_(selected))))
+        if selected
+        else []
+    )
     by_id = {item.id: item for item in media_rows}
     media: list[MediaInput] = []
     for asset_id in selected:
@@ -81,7 +94,14 @@ async def build_publish_request(
     config: dict = {}
     if account and account.encrypted_credentials:
         config = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
-    if provider in OAUTH_PROVIDERS and account and account.encrypted_credentials:
+    mode = provider_connection_mode(db, settings, provider)
+    config["connection_mode"] = mode
+    if (
+        provider in OAUTH_PROVIDERS
+        and mode == "automatic"
+        and account
+        and account.encrypted_credentials
+    ):
         config["access_token"] = await valid_access_token(db, settings, provider)
 
     return PublishRequest(
@@ -113,6 +133,13 @@ def _schedule_status_poll(delivery: Delivery, seconds: int, message: str | None 
     delivery.next_attempt_at = datetime.now(UTC) + timedelta(seconds=max(5, seconds))
 
 
+def _set_manual_action(publication: Publication, delivery: Delivery, message: str) -> None:
+    delivery.status = DeliveryStatus.manual_action.value
+    delivery.last_error = message
+    delivery.external_url = f"/publications/{publication.id}/manual/{delivery.id}"
+    delivery.next_attempt_at = None
+
+
 async def process_delivery(db: Session, settings: Settings, delivery: Delivery) -> bool:
     if delivery.status in (DeliveryStatus.published.value, DeliveryStatus.manual_action.value):
         return False
@@ -132,15 +159,27 @@ async def process_delivery(db: Session, settings: Settings, delivery: Delivery) 
 
     connector = CONNECTORS.get(delivery.channel)
     if connector is None:
-        delivery.status = DeliveryStatus.manual_action.value
-        delivery.last_error = "Автоматический адаптер для этой площадки ещё не активирован"
-        delivery.next_attempt_at = None
+        _set_manual_action(
+            publication,
+            delivery,
+            "Автоматический адаптер недоступен; Bamboo подготовил пакет для ручной публикации",
+        )
         db.commit()
         _update_publication_status(db, publication)
         return True
 
     try:
         request = await build_publish_request(db, settings, publication, delivery)
+        if request.config.get("connection_mode") == "manual":
+            _set_manual_action(
+                publication,
+                delivery,
+                "Пакет готов: скопируйте текст, скачайте медиа и откройте площадку",
+            )
+            db.commit()
+            _update_publication_status(db, publication)
+            return True
+
         errors = connector.validate(request)
         if errors:
             raise PermanentPublishError("; ".join(errors))
@@ -162,12 +201,16 @@ async def process_delivery(db: Session, settings: Settings, delivery: Delivery) 
         else:
             result = await connector.publish(request)
             if result.manual_action:
-                delivery.status = DeliveryStatus.manual_action.value
-                delivery.last_error = result.message
-                delivery.next_attempt_at = None
+                _set_manual_action(
+                    publication,
+                    delivery,
+                    result.message or "Пакет подготовлен для ручной публикации",
+                )
             elif result.processing:
                 if not result.external_post_id:
-                    raise PermanentPublishError("Площадка приняла публикацию без идентификатора статуса")
+                    raise PermanentPublishError(
+                        "Площадка приняла публикацию без идентификатора статуса"
+                    )
                 delivery.external_post_id = result.external_post_id
                 delivery.external_url = result.external_url
                 _schedule_status_poll(delivery, result.poll_after_seconds, result.message)
