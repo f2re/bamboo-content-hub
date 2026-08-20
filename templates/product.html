@@ -1,8 +1,18 @@
 {% extends 'base.html' %}
 {% set heading=product.name %}
+{% set facts=product.facts or {} %}
+{% set price=facts.get('price', {}) %}
+{% set dimensions=facts.get('dimensions', {}) %}
+{% set care=facts.get('care', {}) %}
 {% set content=product.channel_content or {} %}
+{% set ig=content.get('instagram', {}) %}
+{% set vk=content.get('vk', {}) %}
+{% set tg=content.get('telegram', {}) %}
+{% set pin=content.get('pinterest', {}) %}
+{% set fb=content.get('facebook', {}) %}
 {% set tt=content.get('tiktok', {}) %}
 {% set yt=content.get('youtube', {}) %}
+{% set lm=content.get('livemaster', {}) %}
 {% set channel_labels={
   'demo':'Проверка',
   'telegram':'Telegram',
@@ -18,46 +28,135 @@
 <a class="button primary" href="/products/{{ product.id }}/ai">Заполнить с ИИ</a>
 {% endblock %}
 {% block content %}
-<section class="grid two">
-  <article class="card">
-    <h3>Медиа</h3>
-    <div class="media-grid">
-      {% for m in product.media|sort(attribute='sort_order') %}
-      <div class="media-item">
-        {% if m.media_type == 'video' %}
-        <video src="/media/{{ m.id }}" muted controls preload="metadata"></video>
-        {% else %}
-        <img src="/media/{{ m.id }}" alt="{{ m.alt_text or '' }}">
-        {% endif %}
-        <span>{{ m.role or m.media_type }}</span>
-      </div>
-      {% else %}
-      <div class="empty wide">Добавьте фото или видео изделия.</div>
-      {% endfor %}
-    </div>
-    <form class="upload" method="post" action="/products/{{ product.id }}/media"
-          enctype="multipart/form-data">
-      <input type="file" name="files" accept="image/*,video/*" multiple required>
-      <button class="button">Загрузить</button>
-    </form>
-  </article>
+{% if request.query_params.get('saved') %}
+<div class="notice success">Изменения сохранены.</div>
+{% endif %}
 
-  <article class="card">
-    <h3>Карточка</h3>
-    <dl class="facts">
-      <dt>Тип</dt><dd>{{ product.product_type or '—' }}</dd>
-      <dt>Артикул</dt><dd>{{ product.sku or '—' }}</dd>
-      <dt>Коллекция</dt><dd>{{ product.collection or '—' }}</dd>
-      <dt>Описание</dt><dd>{{ product.description or '—' }}</dd>
-    </dl>
-    <a class="button soft full" href="/products/{{ product.id }}/ai">
-      Подготовить запрос для нейросети
-    </a>
-  </article>
+<section class="card media-workspace">
+  <div class="card-head media-head">
+    <div>
+      <h3>Фото и видео</h3>
+      <p class="muted">Перетащите кадры, чтобы изменить порядок. Первый кадр используется как обложка.</p>
+    </div>
+    <span class="pill">{{ product.media|length }} файлов</span>
+  </div>
+  <div class="media-grid editable-media" data-media-grid data-product-id="{{ product.id }}">
+    {% for m in product.media|sort(attribute='sort_order') %}
+    <article class="media-item media-edit-item" draggable="true" data-media-id="{{ m.id }}">
+      {% if m.media_type == 'video' %}
+      <video src="/media/{{ m.id }}" muted controls preload="metadata"></video>
+      {% else %}
+      <img src="/media/{{ m.id }}" alt="{{ m.alt_text or '' }}">
+      {% endif %}
+      <div class="media-badges">
+        <span class="media-index">{% if loop.first %}Обложка{% else %}{{ loop.index }}{% endif %}</span>
+        <span class="media-size">{{ (m.file_size / 1024 / 1024)|round(1) }} МБ</span>
+      </div>
+      <button class="media-delete" type="button" data-delete-media="{{ m.id }}" aria-label="Удалить файл">×</button>
+      <span class="drag-handle" title="Перетащить">⋮⋮</span>
+    </article>
+    {% else %}
+    <div class="empty wide" data-empty-media>Добавьте фотографии или видео изделия.</div>
+    {% endfor %}
+  </div>
+  <form class="upload upload-enhanced" method="post" action="/products/{{ product.id }}/media"
+        enctype="multipart/form-data" data-upload-form>
+    <label class="drop-zone">
+      <strong>Добавить фото или видео</strong>
+      <span>Можно выбрать несколько файлов или перетащить их сюда. Фото автоматически уменьшаются и поворачиваются; HEIC с iPhone преобразуется в JPEG. Видео при наличии ffmpeg нормализуется в MP4.</span>
+      <input type="file" name="files" accept="image/*,video/*,.heic,.heif" multiple required data-upload-input>
+    </label>
+    <div class="upload-status" data-upload-status hidden>
+      <div class="progress-track"><span data-upload-progress></span></div>
+      <p class="muted" data-upload-message></p>
+    </div>
+    <button class="button" type="submit">Загрузить</button>
+  </form>
 </section>
 
+<form method="post" action="/products/{{ product.id }}" class="product-editor" data-product-editor>
+  <section class="card">
+    <div class="card-head"><div><h3>Карточка изделия</h3><p class="muted">Эти данные используются как источник для всех публикаций.</p></div></div>
+    <div class="settings-grid two-columns">
+      <label>Название<input name="name" required value="{{ product.name }}"></label>
+      <label>Тип изделия<input name="product_type" value="{{ product.product_type or '' }}" placeholder="Чашка, тарелка, ваза…"></label>
+      <label>Артикул<input name="sku" value="{{ product.sku or '' }}"></label>
+      <label>Коллекция<input name="collection" value="{{ product.collection or '' }}"></label>
+    </div>
+    <label>Описание<textarea name="description" rows="5" placeholder="Коротко и по-человечески опишите изделие">{{ product.description or '' }}</textarea></label>
+
+    <div class="form-section-title">Цена и характеристики</div>
+    <div class="settings-grid four-columns">
+      <label>Цена<input name="price_amount" inputmode="decimal" value="{{ price.get('amount') if price.get('amount') is not none else '' }}" placeholder="3200"></label>
+      <label>Валюта<input name="price_currency" value="{{ price.get('currency') or 'RUB' }}" maxlength="3"></label>
+      <label>Высота, мм<input name="height_mm" inputmode="decimal" value="{{ dimensions.get('height_mm') if dimensions.get('height_mm') is not none else '' }}"></label>
+      <label>Диаметр, мм<input name="diameter_mm" inputmode="decimal" value="{{ dimensions.get('diameter_mm') if dimensions.get('diameter_mm') is not none else '' }}"></label>
+      <label>Объём, мл<input name="volume_ml" inputmode="decimal" value="{{ dimensions.get('volume_ml') if dimensions.get('volume_ml') is not none else '' }}"></label>
+      <label>Масса, г<input name="weight_g" inputmode="decimal" value="{{ dimensions.get('weight_g') if dimensions.get('weight_g') is not none else '' }}"></label>
+      <label>Наличие<input name="availability" value="{{ facts.get('availability') or '' }}" placeholder="В наличии / под заказ"></label>
+    </div>
+    <div class="settings-grid two-columns">
+      <label>Материалы<input name="materials" value="{{ (facts.get('materials') or [])|join(', ') }}" placeholder="каменная масса, глазурь"></label>
+      <label>Техники<input name="techniques" value="{{ (facts.get('techniques') or [])|join(', ') }}" placeholder="гончарный круг, ручная роспись"></label>
+      <label>Глазурь<input name="glaze" value="{{ facts.get('glaze') or '' }}"></label>
+      <label>Обжиг<input name="firing" value="{{ facts.get('firing') or '' }}"></label>
+    </div>
+    <div class="settings-grid three-columns">
+      {% for field,label in [('dishwasher','Посудомоечная машина'),('microwave','Микроволновая печь'),('food_safe','Контакт с пищей')] %}
+      <label>{{ label }}
+        <select name="{{ field }}">
+          <option value="unknown" {% if care.get(field) is none %}selected{% endif %}>Не указано</option>
+          <option value="yes" {% if care.get(field) is sameas true %}selected{% endif %}>Можно</option>
+          <option value="no" {% if care.get(field) is sameas false %}selected{% endif %}>Нельзя</option>
+        </select>
+      </label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card channel-copy-editor">
+    <div class="card-head"><div><h3>Тексты площадок</h3><p class="muted">Можно отредактировать после ИИ или заполнить вручную. Изменения сохраняются в карточке изделия.</p></div></div>
+    <details open><summary>Instagram <span>{{ ig.get('caption','')|length }} символов</span></summary>
+      <label>Текст<textarea name="instagram_caption" rows="5">{{ ig.get('caption','') }}</textarea></label>
+      <label>Хэштеги<input name="instagram_hashtags" value="{{ (ig.get('hashtags') or [])|join(', ') }}" placeholder="керамика, ручнаяработа"></label>
+    </details>
+    <details><summary>VK <span>{{ vk.get('text','')|length }} символов</span></summary>
+      <label>Текст<textarea name="vk_text" rows="5">{{ vk.get('text','') }}</textarea></label>
+      <label>Хэштеги<input name="vk_hashtags" value="{{ (vk.get('hashtags') or [])|join(', ') }}"></label>
+    </details>
+    <details><summary>Telegram <span>{{ tg.get('text','')|length }} символов</span></summary>
+      <label>Текст<textarea name="telegram_text" rows="5">{{ tg.get('text','') }}</textarea></label>
+      <div class="settings-grid two-columns"><label>Текст кнопки<input name="telegram_button_text" value="{{ tg.get('button_text','') }}"></label><label>Ссылка кнопки<input name="telegram_button_url" value="{{ tg.get('button_url','') }}"></label></div>
+    </details>
+    <details><summary>Pinterest <span>{{ pin.get('description','')|length }} символов</span></summary>
+      <label>Заголовок<input name="pinterest_title" value="{{ pin.get('title','') }}"></label>
+      <label>Описание<textarea name="pinterest_description" rows="4">{{ pin.get('description','') }}</textarea></label>
+      <div class="settings-grid two-columns"><label>Ключевые слова<input name="pinterest_keywords" value="{{ (pin.get('keywords') or [])|join(', ') }}"></label><label>Ссылка на изделие<input name="pinterest_destination_url" value="{{ pin.get('destination_url','') }}"></label></div>
+    </details>
+    <details><summary>Facebook <span>{{ fb.get('text','')|length }} символов</span></summary>
+      <label>Текст<textarea name="facebook_text" rows="5">{{ fb.get('text','') }}</textarea></label>
+    </details>
+    <details><summary>TikTok <span>{{ tt.get('caption','')|length }} символов</span></summary>
+      <label>Подпись<textarea name="tiktok_caption" rows="4" maxlength="2200">{{ tt.get('caption','') }}</textarea></label>
+      <label>Хэштеги<input name="tiktok_hashtags" value="{{ (tt.get('hashtags') or [])|join(', ') }}"></label>
+    </details>
+    <details><summary>YouTube <span>{{ yt.get('title','') }}</span></summary>
+      <label>Заголовок<input name="youtube_title" maxlength="100" value="{{ yt.get('title','') }}"></label>
+      <label>Описание<textarea name="youtube_description" rows="5">{{ yt.get('description','') }}</textarea></label>
+      <label>Теги<input name="youtube_tags" value="{{ (yt.get('tags') or [])|join(', ') }}"></label>
+    </details>
+    <details><summary>Ярмарка мастеров <span>{{ lm.get('title','') }}</span></summary>
+      <label>Заголовок<input name="livemaster_title" value="{{ lm.get('title','') }}"></label>
+      <label>Короткое описание<textarea name="livemaster_short_description" rows="3">{{ lm.get('short_description','') }}</textarea></label>
+      <label>Описание<textarea name="livemaster_description" rows="6">{{ lm.get('description','') }}</textarea></label>
+      <label>Ключевые слова<input name="livemaster_keywords" value="{{ (lm.get('keywords') or [])|join(', ') }}"></label>
+    </details>
+    <div class="sticky-save"><span class="muted">Сначала сохраните карточку, затем создавайте публикацию.</span><button class="button primary" type="submit">Сохранить изделие и тексты</button></div>
+  </section>
+</form>
+
 <section class="card">
-  <div class="card-head"><h3>Создать публикацию</h3></div>
+  <div class="card-head"><div><h3>Создать публикацию</h3><p class="muted">Выберите площадки и кадры. Тексты берутся из сохранённой карточки выше.</p></div></div>
   <form method="post" action="/products/{{ product.id }}/publications"
         class="publish-form" data-publish-form>
     <div class="channels">
@@ -72,7 +171,7 @@
 
     <div class="media-select">
       {% for m in product.media|sort(attribute='sort_order') %}
-      <label>
+      <label title="{{ m.original_filename }}">
         <input type="checkbox" name="media_ids" value="{{ m.id }}" checked>
         {% if m.media_type == 'video' %}
         <video src="/media/{{ m.id }}" muted preload="metadata"></video>
@@ -85,142 +184,44 @@
 
     <section class="platform-settings" data-channel-settings="tiktok" hidden>
       <div class="settings-head">
-        <div>
-          <p class="eyebrow">TikTok Direct Post</p>
-          <h4>Проверьте аккаунт и публикацию</h4>
-        </div>
-        <button class="button small-button" type="button" data-load-tiktok>
-          Обновить аккаунт
-        </button>
+        <div><p class="eyebrow">TikTok Direct Post</p><h4>Проверьте аккаунт и публикацию</h4></div>
+        <button class="button small-button" type="button" data-load-tiktok>Обновить аккаунт</button>
       </div>
-      <input type="hidden" name="tiktok_creator_checked" value="false"
-             data-tiktok-creator-checked>
-      <p class="account-summary muted" data-tiktok-account aria-live="polite">
-        При выборе TikTok сведения об аккаунте будут запрошены заново.
-      </p>
-
+      <input type="hidden" name="tiktok_creator_checked" value="false" data-tiktok-creator-checked>
+      <p class="account-summary muted" data-tiktok-account aria-live="polite">При выборе TikTok сведения об аккаунте будут запрошены заново.</p>
       <div class="settings-grid two-columns">
-        <label>
-          Заголовок фото
-          <input name="tiktok_title" maxlength="90" value="{{ tt.get('title', '') }}"
-                 placeholder="Необязательно для видео">
-        </label>
-        <label>
-          Кто увидит публикацию
-          <select name="tiktok_privacy_level" data-tiktok-privacy>
-            <option value="">Сначала обновите аккаунт</option>
-          </select>
-        </label>
+        <label>Заголовок фото<input name="tiktok_title" maxlength="90" value="{{ tt.get('title', '') }}" placeholder="Необязательно для видео"></label>
+        <label>Кто увидит публикацию<select name="tiktok_privacy_level" data-tiktok-privacy><option value="">Сначала обновите аккаунт</option></select></label>
       </div>
-      <label>
-        Подпись
-        <textarea name="tiktok_caption" rows="4" maxlength="2200"
-                  data-tiktok-caption>{{ tt.get('caption', '') }}</textarea>
-      </label>
-
+      <label>Подпись только для этой публикации<textarea name="tiktok_caption" rows="4" maxlength="2200" data-tiktok-caption>{{ tt.get('caption', '') }}</textarea></label>
       <div class="option-grid">
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_disable_comment" data-tiktok-control="comment">
-          <span>Отключить комментарии</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_disable_duet" data-tiktok-control="duet">
-          <span>Отключить дуэты</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_disable_stitch" data-tiktok-control="stitch">
-          <span>Отключить Stitch</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_is_aigc">
-          <span>Материал создан или существенно изменён ИИ</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_auto_add_music">
-          <span>Автоматически добавить музыку к фото</span>
-        </label>
+        <label class="check-row"><input type="checkbox" name="tiktok_disable_comment" data-tiktok-control="comment"><span>Отключить комментарии</span></label>
+        <label class="check-row"><input type="checkbox" name="tiktok_disable_duet" data-tiktok-control="duet"><span>Отключить дуэты</span></label>
+        <label class="check-row"><input type="checkbox" name="tiktok_disable_stitch" data-tiktok-control="stitch"><span>Отключить Stitch</span></label>
+        <label class="check-row"><input type="checkbox" name="tiktok_is_aigc"><span>Материал создан или существенно изменён ИИ</span></label>
+        <label class="check-row"><input type="checkbox" name="tiktok_auto_add_music"><span>Автоматически добавить музыку к фото</span></label>
       </div>
-
-      <label class="check-row disclosure-toggle">
-        <input type="checkbox" name="tiktok_commercial_content_toggle"
-               data-tiktok-commercial>
-        <span>Публикация продвигает товар, услугу или бренд</span>
-      </label>
+      <label class="check-row disclosure-toggle"><input type="checkbox" name="tiktok_commercial_content_toggle" data-tiktok-commercial><span>Публикация продвигает товар, услугу или бренд</span></label>
       <div class="disclosure-options" data-tiktok-disclosure hidden>
         <p class="muted">Укажите, кого продвигает публикация. Можно выбрать оба варианта.</p>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_brand_organic_toggle"
-                 data-tiktok-own-brand>
-          <span>Свой бренд или собственный бизнес — отметка «Рекламный контент»</span>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" name="tiktok_brand_content_toggle"
-                 data-tiktok-branded>
-          <span>Сторонний бренд — отметка «Платное партнёрство»</span>
-        </label>
+        <label class="check-row"><input type="checkbox" name="tiktok_brand_organic_toggle" data-tiktok-own-brand><span>Свой бренд или собственный бизнес — отметка «Рекламный контент»</span></label>
+        <label class="check-row"><input type="checkbox" name="tiktok_brand_content_toggle" data-tiktok-branded><span>Сторонний бренд — отметка «Платное партнёрство»</span></label>
       </div>
-
-      <label class="check-row consent-row">
-        <input type="checkbox" name="tiktok_direct_post_consent"
-               data-tiktok-consent>
-        <span data-tiktok-consent-text>
-          Разрешаю отправить выбранные материалы и текст в подключённый аккаунт TikTok.
-        </span>
-      </label>
-      <p class="field-help">
-        TikTok повторно проверит настройки аккаунта перед отправкой. Обработка публикации может
-        занять несколько минут. Фото должны быть доступны с подтверждённого HTTPS-домена.
-      </p>
+      <label class="check-row consent-row"><input type="checkbox" name="tiktok_direct_post_consent" data-tiktok-consent><span data-tiktok-consent-text>Разрешаю отправить выбранные материалы и текст в подключённый аккаунт TikTok.</span></label>
+      <p class="field-help">TikTok повторно проверит настройки аккаунта перед отправкой. Фото должны быть доступны с подтверждённого HTTPS-домена.</p>
     </section>
 
     <section class="platform-settings" data-channel-settings="youtube" hidden>
-      <div class="settings-head">
-        <div>
-          <p class="eyebrow">YouTube</p>
-          <h4>Метаданные видео</h4>
-        </div>
-        <button class="button small-button" type="button" data-health="youtube">
-          Проверить канал
-        </button>
-      </div>
+      <div class="settings-head"><div><p class="eyebrow">YouTube</p><h4>Метаданные видео</h4></div><button class="button small-button" type="button" data-health="youtube">Проверить канал</button></div>
       <p class="account-summary muted" data-health-result aria-live="polite"></p>
-      <label>
-        Заголовок
-        <input name="youtube_title" maxlength="100"
-               value="{{ yt.get('title') or product.name }}">
-      </label>
-      <label>
-        Описание
-        <textarea name="youtube_description" rows="5">{{ yt.get('description', '') }}</textarea>
-      </label>
-      <label>
-        Кто увидит видео
-        <select name="youtube_privacy_status" data-youtube-privacy>
-          <option value="">Выберите видимость</option>
-          <option value="private" {% if yt.get('privacy_status') == 'private' %}selected{% endif %}>
-            Только я
-          </option>
-          <option value="unlisted" {% if yt.get('privacy_status') == 'unlisted' %}selected{% endif %}>
-            Доступ по ссылке
-          </option>
-          <option value="public" {% if yt.get('privacy_status') == 'public' %}selected{% endif %}>
-            Для всех
-          </option>
-        </select>
-      </label>
-      <p class="field-help">
-        Видео загружается частями и автоматически возобновляется при кратковременном обрыве связи.
-      </p>
+      <label>Заголовок только для этой публикации<input name="youtube_title" maxlength="100" value="{{ yt.get('title') or product.name }}"></label>
+      <label>Описание<textarea name="youtube_description" rows="5">{{ yt.get('description', '') }}</textarea></label>
+      <label>Кто увидит видео<select name="youtube_privacy_status" data-youtube-privacy><option value="">Выберите видимость</option><option value="private">Только я</option><option value="unlisted">Доступ по ссылке</option><option value="public">Для всех</option></select></label>
+      <p class="field-help">Видео загружается частями и автоматически возобновляется при кратковременном обрыве связи.</p>
     </section>
 
-    <label class="schedule-field">
-      Когда
-      <input type="datetime-local" name="scheduled_at">
-    </label>
-    <div class="actions">
-      <button class="button" name="action" value="draft">Сохранить черновик</button>
-      <button class="button primary" name="action" value="publish">Опубликовать</button>
-    </div>
+    <label class="schedule-field">Когда<input type="datetime-local" name="scheduled_at"></label>
+    <div class="actions"><button class="button" name="action" value="draft">Сохранить черновик</button><button class="button primary" name="action" value="publish">Опубликовать</button></div>
   </form>
 </section>
 {% endblock %}
