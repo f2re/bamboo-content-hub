@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bamboo-content-hub"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first content hub for Bamboo Pottery"
 requires-python = ">=3.12"
 dependencies = [

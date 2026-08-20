@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#f5f5f7">
   <meta name="color-scheme" content="light">
   <meta name="csrf-token" content="">
-  <link rel="stylesheet" href="/static/app.css">
-  <link rel="stylesheet" href="/static/apple-ui.css">
-  <link rel="stylesheet" href="/static/manual-mode.css">
+  <link rel="stylesheet" href="/static/app.css?v=0.3.0">
+  <link rel="stylesheet" href="/static/apple-ui.css?v=0.3.0">
+  <link rel="stylesheet" href="/static/manual-mode.css?v=0.3.0">
   <title>Справка · Bamboo Content Hub</title>
 </head>
-<body data-theme="light">
+<body data-theme="light" data-bamboo-version="0.3.0">
   <a class="skip-link" href="#main-content">К содержимому</a>
   <div class="shell">
     <aside class="sidebar">
@@ -23,7 +23,7 @@
         <a href="/connections">Подключения</a>
         <a href="/static/help.html" aria-current="page">Справка</a>
       </nav>
-      <div class="sidebar-footer muted small">Bamboo Content Hub · справка</div>
+      <div class="sidebar-footer muted small"><span>Bamboo Content Hub · справка</span><span>v0.3.0 · browser assist</span></div>
     </aside>
 
     <main id="main-content">
@@ -68,15 +68,40 @@
         <p class="muted">Это устойчивее и безопаснее: нет хранения полноценной браузерной сессии и зависимости от внутренних endpoint сайта.</p>
       </section>
 
+      <section class="hero section-gap" id="livemaster-browser">
+        <span class="pill">Ярмарка мастеров</span>
+        <h2>Вошёл в браузере → Bamboo заполнил карточку</h2>
+        <p>Для Ярмарки мастеров не нужен OAuth или business API. Используется ваша обычная авторизация на livemaster.ru и локальный помощник-закладка.</p>
+      </section>
+
+      <section class="grid two">
+        <article class="card"><span class="step">1</span><h3>Подготовьте пакет</h3><p>Создайте публикацию для «Ярмарки мастеров», запустите её и откройте пакет в истории.</p></article>
+        <article class="card"><span class="step">2</span><h3>Добавьте помощник один раз</h3><p>Перетащите кнопку «Bamboo → заполнить Ярмарку» из пакета на панель закладок. Обычный клик копирует код закладки.</p></article>
+        <article class="card"><span class="step">3</span><h3>Скопируйте JSON и войдите</h3><p>Нажмите «Скопировать данные для помощника», откройте livemaster.ru и авторизуйтесь обычным способом.</p></article>
+        <article class="card"><span class="step">4</span><h3>Откройте форму и нажмите закладку</h3><p>Помощник ищет поля по названию, label и placeholder, заполняет только пустые значения и показывает, что осталось внести вручную. Фото загрузите из ZIP.</p></article>
+      </section>
+
       <section class="card section-gap">
-        <h3>Когда нужен автоматический API</h3>
-        <p>Только если требуется публикация полностью без участия человека. Откройте нужную карточку подключения и раскройте «Автоматически через официальный API — расширенный режим».</p>
-        <p class="muted">Telegram остаётся самым простым автоматическим каналом: BotFather → токен → @имя_канала.</p>
+        <h3>Граница безопасности помощника</h3>
+        <p>Помощник читает только скопированный JSON и видимые поля открытой страницы. Он не читает cookies, пароль, локальное хранилище или сетевые запросы и не нажимает кнопку публикации.</p>
         <a class="button primary" href="/connections">Открыть подключения</a>
       </section>
 
       <section class="card section-gap">
-        <h3>Обновление системы</h3>
+        <h3>Когда нужен автоматический API</h3>
+        <p>Только если требуется публикация полностью без участия человека. Откройте нужную карточку подключения и раскройте «Автоматически через официальный API — расширенный режим».</p>
+        <p class="muted">Telegram остаётся самым простым автоматическим каналом: BotFather → токен → @имя_канала. Для остальных сервисов расширенный режим может требовать developer app, professional/business account, review или audit самой площадки.</p>
+        <a class="button primary" href="/connections">Открыть подключения</a>
+      </section>
+
+      <section class="card section-gap">
+        <h3>Если кнопка «Добавить» не работала</h3>
+        <p>В версии 0.3.0 удалены inline-обработчики, которые блокировались строгой Content Security Policy. Кнопка теперь открывает диалог через отдельный скрипт, а без JavaScript ведёт на самостоятельную страницу создания изделия.</p>
+      </section>
+
+      <section class="card section-gap">
+        <h3>Проверка версии и обновление</h3>
+        <p>В левом нижнем углу должна отображаться строка <code>v0.3.0 · без приложений</code>. Версию также возвращает <code>/health/version</code>.</p>
         <p>Из каталога проекта запустите <code>./scripts/update.sh</code>. Скрипт создаст резервную копию, загрузит актуальный main, пересоберёт контейнер, применит миграции, перезапустит Hub и выполнит smoke test.</p>
       </section>
     </main>
@@ -85,6 +110,6 @@
   <nav class="mobile-nav" aria-label="Мобильная навигация">
     <a href="/">Обзор</a><a href="/products">Изделия</a><a href="/publications">Планы</a><a href="/connections">Связи</a><a href="/static/help.html" aria-current="page">Справка</a>
   </nav>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=0.3.0"></script>
 </body>
 </html>

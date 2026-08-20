@@ -1,12 +1,17 @@
 {% extends 'base.html' %}
 {% set heading='Пакет для ' ~ channel_label %}
+{% set is_livemaster=delivery.channel == 'livemaster' %}
 {% block top_action %}<a class="button quiet" href="/publications">К публикациям</a>{% endblock %}
 {% block content %}
 <section class="manual-package-hero">
   <div>
-    <span class="pill">Без developer app</span>
+    <span class="pill">{% if is_livemaster %}Авторизация в вашем браузере{% else %}Без developer app{% endif %}</span>
     <h2>{{ product.name }}</h2>
+    {% if is_livemaster %}
+    <p>Войдите на Ярмарку мастеров обычным способом. Bamboo не получает пароль и cookies: он только готовит поля, помощник заполняет открытую форму, а фотографии остаются в ZIP.</p>
+    {% else %}
     <p>Bamboo уже собрал текст и выбранные медиа. Скопируйте текст, скачайте материалы, откройте {{ channel_label }} и после публикации отметьте результат.</p>
+    {% endif %}
   </div>
   {% if delivery.status == 'published' %}
   <span class="connection-state connected"><span aria-hidden="true"></span>Опубликовано</span>
@@ -15,10 +20,62 @@
   {% endif %}
 </section>
 
+{% if is_livemaster %}
+<section class="card browser-assistant-card" id="livemaster-browser">
+  <div class="card-head">
+    <div>
+      <p class="eyebrow">Помощник браузера</p>
+      <h3>Заполнить карточку без API и передачи сессии</h3>
+      <p class="muted">Один раз добавьте кнопку-помощник в закладки. Для каждой работы копируйте JSON ниже, откройте форму Ярмарки мастеров и нажмите закладку.</p>
+    </div>
+    <span class="pill">Локально в браузере</span>
+  </div>
+
+  <div class="browser-assistant-steps">
+    <article><span>1</span><div><strong>Скопируйте данные</strong><small>Помощник читает только этот JSON из буфера обмена.</small></div></article>
+    <article><span>2</span><div><strong>Войдите штатно</strong><small>Авторизация и cookies остаются внутри livemaster.ru.</small></div></article>
+    <article><span>3</span><div><strong>Нажмите закладку</strong><small>Название, описание, цена и характеристики заполнятся по доступным полям.</small></div></article>
+  </div>
+
+  <div class="browser-assistant-actions">
+    <button class="button primary" type="button" data-copy="#livemaster-browser-payload">Скопировать данные для помощника</button>
+    <a class="button soft bookmarklet-button" href="#" data-livemaster-bookmarklet draggable="true">Bamboo → заполнить Ярмарку</a>
+    <a class="button" href="{{ platform_url }}" target="_blank" rel="noopener">Открыть Ярмарку мастеров и войти</a>
+  </div>
+  <p class="field-help" data-bookmarklet-result>Перетащите кнопку «Bamboo → заполнить Ярмарку» на панель закладок. При обычном клике код закладки копируется.</p>
+  <textarea id="livemaster-browser-payload" class="browser-payload" readonly spellcheck="false">{{ livemaster_payload_json }}</textarea>
+  <div class="notice browser-security-note">
+    <strong>Что помощник не делает</strong>
+    <p>Он не читает cookies, пароль и сетевые запросы сайта, не нажимает «Опубликовать» и не перезаписывает уже заполненные поля. Фото загрузите из ZIP вручную.</p>
+  </div>
+</section>
+
+<section class="card livemaster-fields-card">
+  <div class="card-head">
+    <div><h3>Поля карточки</h3><p class="muted">Если форма изменилась и помощник не нашёл поле, скопируйте нужное значение отдельно.</p></div>
+  </div>
+  <div class="livemaster-field-grid">
+    {% for field in livemaster_fields %}
+    <article class="copy-field-card">
+      <div class="copy-field-head">
+        <strong>{{ field.label }}</strong>
+        <button class="button small-button" type="button" data-copy="#livemaster-field-{{ field.key }}">Скопировать</button>
+      </div>
+      {% if field.multiline %}
+      <textarea id="livemaster-field-{{ field.key }}" readonly spellcheck="false">{{ field.value }}</textarea>
+      {% else %}
+      <input id="livemaster-field-{{ field.key }}" readonly value="{{ field.value }}">
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="manual-package-grid">
   <article class="card manual-copy-card">
     <div class="card-head">
-      <div><h3>Текст публикации</h3><p class="muted">Готовая версия именно для {{ channel_label }}.</p></div>
+      <div><h3>{% if is_livemaster %}Полное описание{% else %}Текст публикации{% endif %}</h3><p class="muted">Готовая версия именно для {{ channel_label }}.</p></div>
       <button class="button primary" type="button" data-copy="#manual-publication-text">Скопировать текст</button>
     </div>
     {% if title_text %}
@@ -30,12 +87,18 @@
   <aside class="card manual-actions-card">
     <h3>Что сделать</h3>
     <ol class="manual-checklist">
+      {% if is_livemaster %}
+      <li><span>1</span><div><strong>Скопируйте JSON</strong><small>Он содержит только данные карточки изделия.</small></div></li>
+      <li><span>2</span><div><strong>Войдите и откройте форму</strong><small>Используйте собственную сессию браузера.</small></div></li>
+      <li><span>3</span><div><strong>Заполните и проверьте</strong><small>Помощник заполнит найденные поля, фото добавьте из ZIP.</small></div></li>
+      {% else %}
       <li><span>1</span><div><strong>Скачайте материалы</strong><small>ZIP содержит текст и все выбранные файлы.</small></div></li>
       <li><span>2</span><div><strong>Откройте площадку</strong><small>Вставьте текст и загрузите медиа.</small></div></li>
       <li><span>3</span><div><strong>Подтвердите результат</strong><small>Bamboo сохранит публикацию в истории.</small></div></li>
+      {% endif %}
     </ol>
     <a class="button soft full" href="/publications/{{ publication.id }}/manual/{{ delivery.id }}/package.zip">Скачать всё одним ZIP</a>
-    {% if platform_url %}<a class="button primary full" href="{{ platform_url }}" target="_blank" rel="noopener">Открыть {{ channel_label }}</a>{% endif %}
+    {% if platform_url %}<a class="button primary full" href="{{ platform_url }}" target="_blank" rel="noopener">{% if is_livemaster %}Открыть Ярмарку мастеров{% else %}Открыть {{ channel_label }}{% endif %}</a>{% endif %}
   </aside>
 </section>
 

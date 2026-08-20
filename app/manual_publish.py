@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 import zipfile
@@ -51,6 +52,8 @@ def _template_context(request: Request) -> dict:
 
 
 templates = Jinja2Templates(directory="templates", context_processors=[_template_context])
+templates.env.globals["app_release"] = "0.3.0"
+templates.env.globals["feature_marker"] = "manual-first-browser-assist"
 
 
 def _package_or_404(
@@ -91,6 +94,62 @@ def _remove_temp_package(path: Path) -> None:
     path.unlink(missing_ok=True)
 
 
+def _format_dimensions(facts: dict) -> str:
+    dimensions = facts.get("dimensions") or {}
+    parts: list[str] = []
+    for key, label, unit in (
+        ("height_mm", "высота", "мм"),
+        ("diameter_mm", "диаметр", "мм"),
+        ("volume_ml", "объём", "мл"),
+        ("weight_g", "масса", "г"),
+    ):
+        value = dimensions.get(key)
+        if value not in (None, ""):
+            parts.append(f"{label} {value:g} {unit}" if isinstance(value, float) else f"{label} {value} {unit}")
+    return ", ".join(parts)
+
+
+def _livemaster_payload(product: Product, content: dict) -> dict:
+    facts = product.facts or {}
+    price = facts.get("price") or {}
+    materials = facts.get("materials") or []
+    keywords = content.get("keywords") or []
+    amount = price.get("amount")
+    if isinstance(amount, float) and amount.is_integer():
+        amount = int(amount)
+    return {
+        "schema": "bamboo-browser-fill/1",
+        "platform": "livemaster",
+        "title": str(content.get("title") or product.name or "").strip(),
+        "short_description": str(content.get("short_description") or "").strip(),
+        "description": str(content.get("description") or product.description or "").strip(),
+        "price": amount if amount is not None else "",
+        "currency": str(price.get("currency") or "RUB").strip(),
+        "materials": ", ".join(str(item).strip() for item in materials if str(item).strip()),
+        "dimensions": _format_dimensions(facts),
+        "keywords": ", ".join(str(item).strip() for item in keywords if str(item).strip()),
+        "availability": str(facts.get("availability") or "").strip(),
+    }
+
+
+def _livemaster_fields(payload: dict) -> list[dict]:
+    definitions = (
+        ("title", "Название", False),
+        ("short_description", "Краткое описание", True),
+        ("description", "Полное описание", True),
+        ("price", "Цена", False),
+        ("materials", "Материалы", False),
+        ("dimensions", "Размеры", False),
+        ("keywords", "Ключевые слова", True),
+        ("availability", "Наличие", False),
+    )
+    return [
+        {"key": key, "label": label, "value": payload.get(key, ""), "multiline": multiline}
+        for key, label, multiline in definitions
+        if payload.get(key) not in (None, "")
+    ]
+
+
 @router.get(
     "/publications/{publication_id}/manual/{delivery_id}",
     response_class=HTMLResponse,
@@ -108,6 +167,9 @@ def manual_package_page(
     )
     content = (publication.channel_content or {}).get(delivery.channel) or {}
     title = str(content.get("title") or product.name)
+    livemaster_payload = (
+        _livemaster_payload(product, content) if delivery.channel == "livemaster" else None
+    )
     return templates.TemplateResponse(
         request,
         "manual_package.html",
@@ -120,6 +182,14 @@ def manual_package_page(
             "platform_url": PLATFORM_URLS.get(delivery.channel, ""),
             "title_text": title,
             "publication_text": channel_text(publication, delivery.channel),
+            "livemaster_payload_json": (
+                json.dumps(livemaster_payload, ensure_ascii=False, indent=2)
+                if livemaster_payload
+                else ""
+            ),
+            "livemaster_fields": (
+                _livemaster_fields(livemaster_payload) if livemaster_payload else []
+            ),
         },
     )
 
@@ -170,6 +240,16 @@ def manual_package_zip(
                 "publication.txt",
                 f"{title}\n\n{text}".strip() + "\n",
             )
+            if delivery.channel == "livemaster":
+                archive.writestr(
+                    "browser-fill.json",
+                    json.dumps(
+                        _livemaster_payload(product, content),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                )
             for index, asset in enumerate(media, start=1):
                 original = _safe_name(asset.original_filename, f"media-{index}")
                 name = f"{index:02d}-{original}"

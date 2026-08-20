@@ -1,1 +1,45 @@
-{% extends 'base.html' %}{% set heading='Изделия' %}{% block top_action %}<button class="button primary" onclick="document.querySelector('#new-product').showModal()">Добавить</button>{% endblock %}{% block content %}<section class="product-grid">{% for p in products %}<a class="product-card" href="/products/{{p.id}}"><div class="product-thumb">{% if p.media %}<img src="/media/{{p.media|sort(attribute='sort_order')|first|attr('id')}}" alt="">{% else %}<span>◌</span>{% endif %}</div><div><h3>{{p.name}}</h3><p>{{p.product_type or 'Изделие Bamboo Pottery'}}</p></div></a>{% else %}<div class="card empty wide">Каталог пуст. Добавьте изделие, затем фотографии и сведения о нём.</div>{% endfor %}</section><dialog id="new-product"><form method="post" action="/products" class="dialog-form"><h2>Новое изделие</h2><label>Название<input name="name" required autofocus placeholder="Например, чашка «Туман»"></label><div class="actions"><button type="button" class="button" onclick="this.closest('dialog').close()">Отмена</button><button class="button primary">Создать</button></div></form></dialog>{% endblock %}
+{% extends 'base.html' %}
+{% set heading='Изделия' %}
+{% block top_action %}
+<a class="button primary" href="/new-product" data-dialog-open="#new-product">Добавить</a>
+{% endblock %}
+{% block content %}
+<section class="product-grid">
+  {% for p in products %}
+  <a class="product-card" href="/products/{{ p.id }}">
+    <div class="product-thumb">
+      {% if p.media %}
+      <img src="/media/{{ p.media|sort(attribute='sort_order')|first|attr('id') }}" alt="">
+      {% else %}
+      <span>◌</span>
+      {% endif %}
+    </div>
+    <div>
+      <h3>{{ p.name }}</h3>
+      <p>{{ p.product_type or 'Изделие Bamboo Pottery' }}</p>
+    </div>
+  </a>
+  {% else %}
+  <div class="card empty wide">
+    <strong>Каталог пока пуст</strong>
+    <span>Добавьте первое изделие, затем фотографии и сведения о нём.</span>
+    <a class="button primary empty-action" href="/new-product" data-dialog-open="#new-product">Добавить изделие</a>
+  </div>
+  {% endfor %}
+</section>
+
+<dialog id="new-product" aria-labelledby="new-product-title">
+  <form method="post" action="/products" class="dialog-form">
+    <h2 id="new-product-title">Новое изделие</h2>
+    <p class="muted">Сейчас нужно только название. Остальные сведения добавите после создания.</p>
+    <label>
+      Название
+      <input name="name" required maxlength="240" placeholder="Например, чашка «Туман»">
+    </label>
+    <div class="actions">
+      <button type="button" class="button" data-dialog-close>Отмена</button>
+      <button class="button primary" type="submit">Создать</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

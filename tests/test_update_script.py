@@ -26,3 +26,15 @@ def test_update_script_is_valid_and_reports_dirty_files():
     assert "git clean" in script  # warning only
     assert script.index("./scripts/backup.sh") < script.index("git fetch")
     assert "git merge --ff-only origin/main" in script
+
+
+def test_smoke_script_confirms_the_expected_release_marker():
+    script_path = ROOT / "scripts" / "smoke.sh"
+    script = script_path.read_text(encoding="utf-8")
+
+    subprocess.run(["bash", "-n", str(script_path)], check=True)
+
+    assert "/health/ready" in script
+    assert "/health/version" in script
+    assert "manual-first-browser-assist" in script
+    assert "[Bamboo smoke] version:" in script
