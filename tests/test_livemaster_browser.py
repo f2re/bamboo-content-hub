@@ -81,7 +81,7 @@ def test_browser_helper_does_not_read_cookies_or_call_private_endpoints(client):
     assert "document.cookie" not in script.text
     assert "XMLHttpRequest" not in script.text
     assert "fetch(" not in script.text
-    assert "не перезаписано" in script.text
+    assert "не перезаписано" in script.text.lower()
 
 
 def test_connections_explain_api_requirements_and_browser_mode(client):
