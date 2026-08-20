@@ -1,1 +1,63 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f5f5f7"><meta name="csrf-token" content="{{csrf_token or ''}}"><link rel="manifest" href="/static/manifest.webmanifest"><link rel="stylesheet" href="/static/app.css"><title>{{ title or 'Bamboo Content Hub' }}</title></head><body><div class="shell"><aside class="sidebar"><a class="brand" href="/"><span class="mark">B</span><span>Bamboo</span></a><nav><a href="/">Обзор</a><a href="/products">Изделия</a><a href="/publications">Публикации</a><a href="/connections">Подключения</a><a href="/static/help.html">Справка</a></nav><div class="muted small">Bamboo Content Hub{% if auth_enabled %}<form method="post" action="/logout"><button class="link" type="submit">Выйти</button></form>{% endif %}</div></aside><main><header class="top"><div><div class="eyebrow">Bamboo Pottery</div><h1>{{ heading or title or 'Контент-центр' }}</h1></div>{% block top_action %}{% endblock %}</header>{% block content %}{% endblock %}</main></div><nav class="mobile-nav"><a href="/">Обзор</a><a href="/products">Изделия</a><a href="/publications">Планы</a><a href="/connections">Связи</a><a href="/static/help.html">Справка</a></nav><script src="/static/app.js"></script><script src="/static/publication-preflight.js"></script></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f7">
+  <meta name="color-scheme" content="light">
+  <meta name="csrf-token" content="{{ csrf_token or '' }}">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/apple-ui.css">
+  <title>{{ title or 'Bamboo Content Hub' }}</title>
+</head>
+{% set current_path = request.url.path if request else '' %}
+<body data-theme="light">
+  <a class="skip-link" href="#main-content">К содержимому</a>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Bamboo Content Hub">
+        <span class="mark">B</span>
+        <span>Bamboo</span>
+      </a>
+      <nav aria-label="Основная навигация">
+        <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Обзор</a>
+        <a href="/products" {% if current_path.startswith('/products') %}aria-current="page"{% endif %}>Изделия</a>
+        <a href="/publications" {% if current_path.startswith('/publications') %}aria-current="page"{% endif %}>Публикации</a>
+        <a href="/connections" {% if current_path.startswith('/connections') %}aria-current="page"{% endif %}>Подключения</a>
+        <a href="/static/help.html">Справка</a>
+      </nav>
+      <div class="sidebar-footer muted small">
+        <span>Bamboo Content Hub</span>
+        {% if auth_enabled %}
+        <form method="post" action="/logout">
+          <button class="link" type="submit">Выйти</button>
+        </form>
+        {% endif %}
+      </div>
+    </aside>
+
+    <main id="main-content">
+      <header class="top">
+        <div>
+          <div class="eyebrow">Bamboo Pottery</div>
+          <h1>{{ heading or title or 'Контент-центр' }}</h1>
+        </div>
+        {% block top_action %}{% endblock %}
+      </header>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Мобильная навигация">
+    <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Обзор</a>
+    <a href="/products" {% if current_path.startswith('/products') %}aria-current="page"{% endif %}>Изделия</a>
+    <a href="/publications" {% if current_path.startswith('/publications') %}aria-current="page"{% endif %}>Планы</a>
+    <a href="/connections" {% if current_path.startswith('/connections') %}aria-current="page"{% endif %}>Связи</a>
+    <a href="/static/help.html">Справка</a>
+  </nav>
+
+  <script src="/static/app.js"></script>
+  <script src="/static/publication-preflight.js"></script>
+</body>
+</html>
