@@ -15,6 +15,22 @@ backup_path=$(realpath "$backup_rel")
   exit 1
 }
 
+wait_ready() {
+  port=${BAMBOO_PORT:-}
+  if [ -z "$port" ] && [ -f .env ]; then
+    port=$(sed -n 's/^BAMBOO_PORT=//p' .env | tail -n1 | tr -d '\r' || true)
+  fi
+  port=${port:-8080}
+  url=${BAMBOO_SMOKE_URL:-http://127.0.0.1:${port}/health/ready}
+  for _attempt in $(seq 1 30); do
+    if body=$(curl -fsS --connect-timeout 3 --max-time 5 "$url" 2>/dev/null) && grep -q 'ready' <<<"$body"; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 rollback() {
   status=${1:-1}
   trap - ERR INT TERM
@@ -30,6 +46,17 @@ rollback() {
     [ ! -f "$work/bamboo.db" ] || cp "$work/bamboo.db" data/bamboo.db
     rm -rf data/media
     cp -a "$work/media" data/media 2>/dev/null || mkdir -p data/media
+    if [ -f data/bamboo.db ]; then
+      python - <<'PY'
+import sqlite3
+
+connection = sqlite3.connect('data/bamboo.db')
+result = connection.execute('pragma integrity_check').fetchone()[0]
+connection.close()
+if result != 'ok':
+    raise SystemExit(f'Rollback SQLite integrity check failed: {result}')
+PY
+    fi
   else
     echo "КРИТИЧЕСКАЯ ОШИБКА: не удалось распаковать $backup_path" >&2
   fi
@@ -39,7 +66,7 @@ rollback() {
   docker compose -f compose.yml build bamboo >/dev/null 2>&1 || true
   docker compose -f compose.yml up -d bamboo >/dev/null 2>&1 || true
 
-  if ./scripts/smoke.sh; then
+  if wait_ready; then
     echo "Откат завершён. Рабочая версия: $old_sha" >&2
   else
     echo "КРИТИЧЕСКАЯ ОШИБКА: автоматический откат выполнен не полностью." >&2
