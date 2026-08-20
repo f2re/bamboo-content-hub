@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import io
 import secrets
+import shutil
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,6 +19,97 @@ from .config import Settings
 from .models import Delivery, DeliveryStatus, MediaAsset, Product, Publication, PublicationStatus
 from .security import detect_media_mime, safe_media_extension, safe_media_path
 
+IMAGE_MAX_SIDE = 2560
+IMAGE_JPEG_QUALITY = 90
+VIDEO_MAX_SIDE = 1920
+
+
+def _optimize_image(content: bytes, mime: str) -> tuple[bytes, str]:
+    """Normalize phone/social images to an EXIF-corrected JPEG, falling back safely."""
+    try:
+        from PIL import Image, ImageOps
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+        with Image.open(io.BytesIO(content)) as source:
+            image = ImageOps.exif_transpose(source)
+            if getattr(image, "is_animated", False):
+                return content, mime
+            image.thumbnail((IMAGE_MAX_SIDE, IMAGE_MAX_SIDE))
+            if image.mode not in {"RGB", "L"}:
+                background = Image.new("RGB", image.size, "white")
+                if "A" in image.getbands():
+                    background.paste(image, mask=image.getchannel("A"))
+                else:
+                    background.paste(image.convert("RGB"))
+                image = background
+            elif image.mode == "L":
+                image = image.convert("RGB")
+            output = io.BytesIO()
+            image.save(
+                output,
+                format="JPEG",
+                quality=IMAGE_JPEG_QUALITY,
+                optimize=True,
+                progressive=True,
+            )
+            optimized = output.getvalue()
+            if optimized:
+                return optimized, "image/jpeg"
+    except Exception:
+        pass
+    return content, mime
+
+
+async def _optimize_video(content: bytes, mime: str, media_dir: Path) -> tuple[bytes, str]:
+    """Normalize decodable videos to H.264/AAC MP4; invalid/test fixtures fall back unchanged."""
+    if not shutil.which("ffmpeg"):
+        return content, mime
+    token = secrets.token_hex(12)
+    source = media_dir / f".{token}.source{safe_media_extension(mime)}"
+    target = media_dir / f".{token}.optimized.mp4"
+    source.write_bytes(content)
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-map_metadata",
+            "-1",
+            "-vf",
+            f"scale={VIDEO_MAX_SIDE}:{VIDEO_MAX_SIDE}:force_original_aspect_ratio=decrease",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "160k",
+            "-movflags",
+            "+faststart",
+            str(target),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await process.communicate()
+        if process.returncode == 0 and target.exists() and target.stat().st_size > 0:
+            return target.read_bytes(), "video/mp4"
+    except (OSError, ValueError):
+        pass
+    finally:
+        source.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+    return content, mime
+
 
 async def save_upload(
     db: Session,
@@ -26,21 +120,29 @@ async def save_upload(
 ) -> MediaAsset:
     content = await upload.read(settings.max_upload_bytes + 1)
     if len(content) > settings.max_upload_bytes:
-        raise ValueError("file exceeds upload limit")
+        raise ValueError("Файл превышает допустимый размер")
     mime = detect_media_mime(content)
     if mime is None:
-        raise ValueError("unsupported or unsafe media file")
-    stored = f"{secrets.token_hex(16)}{safe_media_extension(mime)}"
+        raise ValueError("Формат файла не поддерживается или небезопасен")
+
+    optimized = content
+    optimized_mime = mime
+    if mime.startswith("image/"):
+        optimized, optimized_mime = _optimize_image(content, mime)
+    elif mime.startswith("video/"):
+        optimized, optimized_mime = await _optimize_video(content, mime, settings.media_dir)
+
+    stored = f"{secrets.token_hex(16)}{safe_media_extension(optimized_mime)}"
     path = safe_media_path(settings.media_dir, stored)
-    path.write_bytes(content)
+    path.write_bytes(optimized)
     asset = MediaAsset(
         product_id=product.id,
         original_filename=Path(upload.filename or "upload").name,
         stored_filename=stored,
-        mime_type=mime,
-        media_type="image" if mime.startswith("image/") else "video",
-        file_size=len(content),
-        checksum=hashlib.sha256(content).hexdigest(),
+        mime_type=optimized_mime,
+        media_type="image" if optimized_mime.startswith("image/") else "video",
+        file_size=len(optimized),
+        checksum=hashlib.sha256(optimized).hexdigest(),
         sort_order=sort_order,
     )
     db.add(asset)
