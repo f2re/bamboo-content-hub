@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import io
 import re
+import tempfile
 import zipfile
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from .config import get_settings
 from .db import get_db
@@ -85,6 +87,10 @@ def _safe_name(value: str, fallback: str) -> str:
     return cleaned[:120] or fallback
 
 
+def _remove_temp_package(path: Path) -> None:
+    path.unlink(missing_ok=True)
+
+
 @router.get(
     "/publications/{publication_id}/manual/{delivery_id}",
     response_class=HTMLResponse,
@@ -155,29 +161,35 @@ def manual_package_zip(
     title = str(content.get("title") or product.name)
     text = channel_text(publication, delivery.channel)
 
-    output = io.BytesIO()
-    used_names: set[str] = set()
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            "publication.txt",
-            f"{title}\n\n{text}".strip() + "\n",
-        )
-        for index, asset in enumerate(media, start=1):
-            original = _safe_name(asset.original_filename, f"media-{index}")
-            name = f"{index:02d}-{original}"
-            while name in used_names:
-                name = f"{index:02d}-{asset.id[:8]}-{original}"
-            used_names.add(name)
-            archive.write(
-                safe_media_path(settings.media_dir, asset.stored_filename),
-                arcname=name,
+    with tempfile.NamedTemporaryFile(prefix="bamboo-package-", suffix=".zip", delete=False) as temp:
+        package_path = Path(temp.name)
+    try:
+        used_names: set[str] = set()
+        with zipfile.ZipFile(package_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "publication.txt",
+                f"{title}\n\n{text}".strip() + "\n",
             )
-    output.seek(0)
+            for index, asset in enumerate(media, start=1):
+                original = _safe_name(asset.original_filename, f"media-{index}")
+                name = f"{index:02d}-{original}"
+                while name in used_names:
+                    name = f"{index:02d}-{asset.id[:8]}-{original}"
+                used_names.add(name)
+                archive.write(
+                    safe_media_path(settings.media_dir, asset.stored_filename),
+                    arcname=name,
+                )
+    except Exception:
+        package_path.unlink(missing_ok=True)
+        raise
+
     filename = f"bamboo-{delivery.channel}-{product.id[:8]}.zip"
-    return StreamingResponse(
-        output,
+    return FileResponse(
+        package_path,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        filename=filename,
+        background=BackgroundTask(_remove_temp_package, package_path),
     )
 
 
