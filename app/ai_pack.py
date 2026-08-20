@@ -329,6 +329,7 @@ def deep_fill(existing: Any, incoming: Any) -> Any:
 def build_prompt(request_id: str, image_count: int, known: dict, channels: list[str]) -> str:
     image_names = ", ".join(f"image_{i}" for i in range(1, image_count + 1)) or "нет медиа"
     schema = json.dumps(BambooContentPack.model_json_schema(), ensure_ascii=False, indent=2)
+    known = {key: value for key, value in known.items() if not str(key).startswith("_")}
     known_json = json.dumps(known, ensure_ascii=False, indent=2)
     channel_text = ", ".join(channels)
     channel_rules = "\n".join(
