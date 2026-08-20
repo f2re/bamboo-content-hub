@@ -13,13 +13,14 @@
   <article class="card">
     <span class="step">2</span>
     <h3>Проверьте и импортируйте ответ</h3>
-    <p class="muted">Подойдёт мультимодальная модель, которая умеет анализировать ваши медиа и возвращать строгий JSON. Сначала нажмите «Проверить»: хаб покажет понятное резюме, вопросы и предположения без необходимости читать сырой JSON.</p>
+    <p class="muted">Сначала нажмите «Проверить». Цена, материалы, размеры, уход и наличие не будут записаны автоматически: хаб покажет их отдельными подтверждениями. Отметьте только те факты, которые вы знаете наверняка.</p>
     <textarea id="ai-answer" class="code" placeholder="Вставьте JSON-ответ модели"></textarea>
     <div class="actions">
       <button class="button" data-preview="{{product.id}}">Проверить</button>
-      <button class="button primary" data-import="{{product.id}}">Импортировать</button>
+      <button class="button primary" data-import="{{product.id}}">Применить подтверждённое</button>
     </div>
     <div id="ai-result" class="result ai-result" aria-live="polite"></div>
   </article>
 </section>
+<script src="/static/ai-confirmation.js"></script>
 {% endblock %}
