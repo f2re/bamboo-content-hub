@@ -1,1 +1,24 @@
-{% extends 'base.html' %}{% set heading='Импорт из ИИ' %}{% block content %}<section class="grid two"><article class="card"><span class="step">1</span><h3>Скопируйте запрос</h3><p class="muted">Добавьте к нему фотографии изделия в том же порядке, что в хабе.</p><textarea id="prompt" class="code" readonly>{{prompt}}</textarea><button class="button full" data-copy="#prompt">Скопировать запрос</button></article><article class="card"><span class="step">2</span><h3>Вставьте ответ</h3><p class="muted">Подойдёт ChatGPT, DeepSeek, Claude или другая модель, которая вернула Bamboo Content Pack.</p><textarea id="ai-answer" class="code" placeholder='{"schema_version":"bamboo-content-pack/1.0", ...}'></textarea><div class="actions"><button class="button" data-preview="{{product.id}}">Проверить</button><button class="button primary" data-import="{{product.id}}">Импортировать</button></div><pre id="ai-result" class="result"></pre></article></section>{% endblock %}
+{% extends 'base.html' %}
+{% set heading='Подготовка с ИИ' %}
+{% block content %}
+<section class="grid two">
+  <article class="card">
+    <span class="step">1</span>
+    <h3>Скопируйте запрос</h3>
+    <p class="muted">Добавьте к нему фотографии изделия в том же порядке, что в карточке. Первый кадр — <strong>image_1</strong>, второй — <strong>image_2</strong> и так далее.</p>
+    <textarea id="prompt" class="code" readonly>{{prompt}}</textarea>
+    <button class="button full" data-copy="#prompt">Скопировать запрос</button>
+  </article>
+  <article class="card">
+    <span class="step">2</span>
+    <h3>Вставьте ответ</h3>
+    <p class="muted">Подойдёт ChatGPT, DeepSeek, Claude или другая модель, которая вернула Bamboo Content Pack. Нажмите «Проверить», чтобы увидеть понятное резюме до импорта.</p>
+    <textarea id="ai-answer" class="code" placeholder='Вставьте JSON-ответ модели'></textarea>
+    <div class="actions">
+      <button class="button" data-preview="{{product.id}}">Проверить</button>
+      <button class="button primary" data-import="{{product.id}}">Импортировать</button>
+    </div>
+    <div id="ai-result" class="result ai-result" aria-live="polite"></div>
+  </article>
+</section>
+{% endblock %}
