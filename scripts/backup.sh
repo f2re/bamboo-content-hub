@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mkdir -p backups
-stamp=$(date +%Y%m%d-%H%M%S)
+stamp="$(date +%Y%m%d-%H%M%S)-$$"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
