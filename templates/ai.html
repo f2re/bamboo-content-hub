@@ -1,23 +1,72 @@
 {% extends 'base.html' %}
 {% set heading='Подготовка с ИИ' %}
+{% set sorted_media=product.media|sort(attribute='sort_order') %}
 {% block top_action %}<a class="button" href="/static/help.html#ai-workflow">Как это работает</a>{% endblock %}
 {% block content %}
-<section class="grid two">
-  <article class="card">
-    <span class="step">1</span>
-    <h3>Скопируйте рабочий запрос</h3>
-    <p class="muted">Хаб уже добавил request_id, известные факты, порядок медиа, правила площадок и актуальную JSON Schema. Приложите те же фото/видео в том же порядке: первый кадр — <strong>image_1</strong>, второй — <strong>image_2</strong> и так далее.</p>
-    <textarea id="prompt" class="code" readonly>{{prompt}}</textarea>
-    <button class="button full" data-copy="#prompt">Скопировать запрос</button>
-  </article>
+<section class="card prompt-ready-card">
+  <div class="prompt-ready-head">
+    <div>
+      <div class="channels prompt-summary">
+        <span class="pill">Готов к копированию</span>
+        <span class="muted small">{{ sorted_media|length }} медиа · все площадки · актуальная JSON Schema</span>
+      </div>
+      <h3>Полный рабочий запрос</h3>
+      <p class="muted">Ничего дописывать или собирать вручную не нужно. Hub сформировал запрос на лету из текущей карточки, известных фактов, порядка медиа, редакционных правил, служебных правил подтверждения и действующей схемы Bamboo Content Pack.</p>
+    </div>
+    <button class="button primary" type="button" data-copy="#prompt">Скопировать готовый запрос</button>
+  </div>
+
+  <div class="prompt-media-grid" aria-label="Порядок медиа для ИИ">
+    {% for m in sorted_media %}
+    <div class="prompt-media-item">
+      <div class="prompt-media-thumb">
+        {% if m.media_type == 'video' %}
+        <video src="/media/{{ m.id }}" muted preload="metadata"></video>
+        {% else %}
+        <img src="/media/{{ m.id }}" alt="{{ m.alt_text or '' }}">
+        {% endif %}
+      </div>
+      <div class="prompt-media-label">
+        <strong>image_{{ loop.index }}</strong>
+        <span title="{{ m.original_filename }}">{{ m.original_filename }}</span>
+      </div>
+    </div>
+    {% else %}
+    <div class="prompt-media-empty">
+      <strong>Медиа пока нет.</strong>
+      <span class="muted">Запрос уже готов для текстовых данных. Для визуального анализа сначала добавьте фото или видео в карточке изделия.</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="prompt-status muted small">Вставьте запрос в ИИ как есть и приложите эти же файлы в показанном порядке. Идентификаторы image_1…N уже включены в запрос.</p>
+  <textarea id="prompt" class="code prompt-code" readonly spellcheck="false">{{prompt}}</textarea>
+  <div class="actions prompt-actions">
+    <button class="button" type="button" data-reload-prompt>Обновить из карточки</button>
+    <button class="button primary" type="button" data-copy="#prompt">Скопировать готовый запрос</button>
+  </div>
+</section>
+
+<section class="grid two section-gap">
   <article class="card">
     <span class="step">2</span>
-    <h3>Проверьте и импортируйте ответ</h3>
-    <p class="muted">Сначала нажмите «Проверить». Цена, материалы, размеры, уход и наличие не будут записаны автоматически: хаб покажет их отдельными подтверждениями. Отметьте только те факты, которые вы знаете наверняка.</p>
-    <textarea id="ai-answer" class="code" placeholder="Вставьте JSON-ответ модели"></textarea>
+    <h3>Вставьте запрос в ИИ</h3>
+    <p>Вставьте скопированный запрос без изменений и приложите показанные выше фото/видео в том же порядке.</p>
+    <ul class="simple-list muted">
+      <li>Ответ должен быть одним JSON-объектом без пояснений вокруг него.</li>
+      <li>Не просите модель менять schema_version, request_id или структуру JSON.</li>
+      <li>Неизвестные факты модель должна оставить пустыми или вынести в needs_confirmation.</li>
+    </ul>
+  </article>
+
+  <article class="card">
+    <span class="step">3</span>
+    <h3>Проверьте и примените ответ</h3>
+    <p class="muted">Сначала нажмите «Проверить». Цена, материалы, размеры, уход и наличие не записываются автоматически: Hub покажет их отдельными подписанными подтверждениями. Отметьте только те факты, которые знаете наверняка.</p>
+    <textarea id="ai-answer" class="code" placeholder="Вставьте JSON-ответ модели" spellcheck="false"></textarea>
     <div class="actions">
-      <button class="button" data-preview="{{product.id}}">Проверить</button>
-      <button class="button primary" data-import="{{product.id}}">Применить подтверждённое</button>
+      <button class="button" type="button" data-preview="{{product.id}}">Проверить</button>
+      <button class="button primary" type="button" data-import="{{product.id}}">Применить подтверждённое</button>
     </div>
     <div id="ai-result" class="result ai-result" aria-live="polite"></div>
   </article>
