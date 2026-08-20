@@ -6,15 +6,18 @@
   <meta name="theme-color" content="#f5f5f7">
   <meta name="color-scheme" content="light">
   <meta name="csrf-token" content="{{ csrf_token or '' }}">
-  <link rel="manifest" href="/static/manifest.webmanifest">
-  <link rel="stylesheet" href="/static/app.css">
-  <link rel="stylesheet" href="/static/apple-ui.css">
-  <link rel="stylesheet" href="/static/manual-mode.css">
+  <meta name="bamboo-version" content="{{ app_release|default('0.3.0') }}">
+  <meta name="bamboo-feature" content="{{ feature_marker|default('manual-first-browser-assist') }}">
+  <link rel="manifest" href="/static/manifest.webmanifest?v={{ app_release|default('0.3.0') }}">
+  <link rel="stylesheet" href="/static/app.css?v={{ app_release|default('0.3.0') }}">
+  <link rel="stylesheet" href="/static/apple-ui.css?v={{ app_release|default('0.3.0') }}">
+  <link rel="stylesheet" href="/static/manual-mode.css?v={{ app_release|default('0.3.0') }}">
   <title>{{ title or 'Bamboo Content Hub' }}</title>
 </head>
 {% set current_path = request.url.path if request else '' %}
 <body
   data-theme="light"
+  data-bamboo-version="{{ app_release|default('0.3.0') }}"
   {% if manual_modes is defined %}
   data-manual-tiktok="{{ 'true' if manual_modes.get('tiktok') else 'false' }}"
   data-manual-youtube="{{ 'true' if manual_modes.get('youtube') else 'false' }}"
@@ -29,13 +32,14 @@
       </a>
       <nav aria-label="Основная навигация">
         <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Обзор</a>
-        <a href="/products" {% if current_path.startswith('/products') %}aria-current="page"{% endif %}>Изделия</a>
+        <a href="/products" {% if current_path.startswith('/products') or current_path == '/new-product' %}aria-current="page"{% endif %}>Изделия</a>
         <a href="/publications" {% if current_path.startswith('/publications') %}aria-current="page"{% endif %}>Публикации</a>
         <a href="/connections" {% if current_path.startswith('/connections') %}aria-current="page"{% endif %}>Подключения</a>
         <a href="/static/help.html">Справка</a>
       </nav>
       <div class="sidebar-footer muted small">
         <span>Bamboo Content Hub</span>
+        <span class="build-marker" title="manual-first-browser-assist">v{{ app_release|default('0.3.0') }} · без приложений</span>
         {% if auth_enabled %}
         <form method="post" action="/logout">
           <button class="link" type="submit">Выйти</button>
@@ -58,14 +62,16 @@
 
   <nav class="mobile-nav" aria-label="Мобильная навигация">
     <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Обзор</a>
-    <a href="/products" {% if current_path.startswith('/products') %}aria-current="page"{% endif %}>Изделия</a>
+    <a href="/products" {% if current_path.startswith('/products') or current_path == '/new-product' %}aria-current="page"{% endif %}>Изделия</a>
     <a href="/publications" {% if current_path.startswith('/publications') %}aria-current="page"{% endif %}>Планы</a>
     <a href="/connections" {% if current_path.startswith('/connections') %}aria-current="page"{% endif %}>Связи</a>
     <a href="/static/help.html">Справка</a>
   </nav>
 
-  <script src="/static/app.js"></script>
-  <script src="/static/manual-mode-ui.js"></script>
-  <script src="/static/publication-preflight.js"></script>
+  <script src="/static/app.js?v={{ app_release|default('0.3.0') }}"></script>
+  <script src="/static/dialogs.js?v={{ app_release|default('0.3.0') }}"></script>
+  <script src="/static/livemaster-assistant.js?v={{ app_release|default('0.3.0') }}"></script>
+  <script src="/static/manual-mode-ui.js?v={{ app_release|default('0.3.0') }}"></script>
+  <script src="/static/publication-preflight.js?v={{ app_release|default('0.3.0') }}"></script>
 </body>
 </html>
