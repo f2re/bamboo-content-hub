@@ -62,7 +62,7 @@ PROVIDER_LABELS = {
     "google": "Google / YouTube",
     "pinterest": "Pinterest",
     "tiktok": "TikTok",
-    "meta": "Meta",
+    "meta": "Meta / Instagram / Facebook",
     "vk": "VK",
     "telegram": "Telegram",
 }
@@ -109,6 +109,36 @@ def _bool_value(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _optional_float(value: str) -> float | None:
+    value = value.strip().replace(",", ".")
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise HTTPException(422, f"Некорректное число: {value}") from exc
+
+
+def _text_list(value: str) -> list[str]:
+    if not value.strip():
+        return []
+    return [item.strip().lstrip("#") for item in value.replace("\n", ",").split(",") if item.strip()]
+
+
+def _tri_state(value: str) -> bool | None:
+    normalized = value.strip().lower()
+    if normalized in {"yes", "true", "1", "on"}:
+        return True
+    if normalized in {"no", "false", "0", "off"}:
+        return False
+    return None
+
+
+def _normalize_media_order(product: Product) -> None:
+    for index, asset in enumerate(sorted(product.media, key=lambda item: item.sort_order)):
+        asset.sort_order = index
 
 
 templates.env.filters["local_datetime"] = _local_datetime
@@ -251,6 +281,144 @@ def product_page(product_id: str, request: Request, db: Session = Depends(get_db
     return templates.TemplateResponse(request, "product.html", {"product": product})
 
 
+@app.post("/products/{product_id}")
+def update_product(
+    product_id: str,
+    name: str = Form(...),
+    product_type: str = Form(default=""),
+    sku: str = Form(default=""),
+    collection: str = Form(default=""),
+    description: str = Form(default=""),
+    price_amount: str = Form(default=""),
+    price_currency: str = Form(default="RUB"),
+    materials: str = Form(default=""),
+    techniques: str = Form(default=""),
+    glaze: str = Form(default=""),
+    firing: str = Form(default=""),
+    height_mm: str = Form(default=""),
+    diameter_mm: str = Form(default=""),
+    volume_ml: str = Form(default=""),
+    weight_g: str = Form(default=""),
+    dishwasher: str = Form(default="unknown"),
+    microwave: str = Form(default="unknown"),
+    food_safe: str = Form(default="unknown"),
+    availability: str = Form(default=""),
+    instagram_caption: str = Form(default=""),
+    instagram_hashtags: str = Form(default=""),
+    vk_text: str = Form(default=""),
+    vk_hashtags: str = Form(default=""),
+    telegram_text: str = Form(default=""),
+    telegram_button_text: str = Form(default=""),
+    telegram_button_url: str = Form(default=""),
+    pinterest_title: str = Form(default=""),
+    pinterest_description: str = Form(default=""),
+    pinterest_keywords: str = Form(default=""),
+    pinterest_destination_url: str = Form(default=""),
+    facebook_text: str = Form(default=""),
+    tiktok_caption: str = Form(default=""),
+    tiktok_hashtags: str = Form(default=""),
+    youtube_title: str = Form(default=""),
+    youtube_description: str = Form(default=""),
+    youtube_tags: str = Form(default=""),
+    livemaster_title: str = Form(default=""),
+    livemaster_short_description: str = Form(default=""),
+    livemaster_description: str = Form(default=""),
+    livemaster_keywords: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    product = product_or_404(db, product_id)
+    product.name = name.strip() or "Без названия"
+    product.product_type = product_type.strip() or None
+    product.sku = sku.strip() or None
+    product.collection = collection.strip() or None
+    product.description = description.strip() or None
+
+    facts = dict(product.facts or {})
+    facts.update(
+        {
+            "price": {
+                "amount": _optional_float(price_amount),
+                "currency": price_currency.strip().upper() or "RUB",
+            },
+            "materials": _text_list(materials),
+            "techniques": _text_list(techniques),
+            "glaze": glaze.strip() or None,
+            "firing": firing.strip() or None,
+            "dimensions": {
+                "height_mm": _optional_float(height_mm),
+                "diameter_mm": _optional_float(diameter_mm),
+                "volume_ml": _optional_float(volume_ml),
+                "weight_g": _optional_float(weight_g),
+            },
+            "care": {
+                "dishwasher": _tri_state(dishwasher),
+                "microwave": _tri_state(microwave),
+                "food_safe": _tri_state(food_safe),
+            },
+            "availability": availability.strip() or None,
+        }
+    )
+    product.facts = facts
+
+    channel_content = dict(product.channel_content or {})
+    channel_content.update(
+        {
+            "instagram": {
+                **dict(channel_content.get("instagram") or {}),
+                "caption": instagram_caption.strip(),
+                "hashtags": _text_list(instagram_hashtags),
+            },
+            "vk": {
+                **dict(channel_content.get("vk") or {}),
+                "text": vk_text.strip(),
+                "hashtags": _text_list(vk_hashtags),
+            },
+            "telegram": {
+                **dict(channel_content.get("telegram") or {}),
+                "text": telegram_text.strip(),
+                "button_text": telegram_button_text.strip(),
+                "button_url": telegram_button_url.strip(),
+            },
+            "pinterest": {
+                **dict(channel_content.get("pinterest") or {}),
+                "title": pinterest_title.strip(),
+                "description": pinterest_description.strip(),
+                "keywords": _text_list(pinterest_keywords),
+                "destination_url": pinterest_destination_url.strip(),
+            },
+            "facebook": {
+                **dict(channel_content.get("facebook") or {}),
+                "text": facebook_text.strip(),
+            },
+            "tiktok": {
+                **dict(channel_content.get("tiktok") or {}),
+                "caption": tiktok_caption.strip(),
+                "hashtags": _text_list(tiktok_hashtags),
+            },
+            "youtube": {
+                **dict(channel_content.get("youtube") or {}),
+                "title": youtube_title.strip(),
+                "description": youtube_description.strip(),
+                "tags": _text_list(youtube_tags),
+            },
+            "livemaster": {
+                **dict(channel_content.get("livemaster") or {}),
+                "title": livemaster_title.strip(),
+                "short_description": livemaster_short_description.strip(),
+                "description": livemaster_description.strip(),
+                "keywords": _text_list(livemaster_keywords),
+            },
+        }
+    )
+    product.channel_content = channel_content
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Такой артикул уже используется другим изделием") from exc
+    return RedirectResponse(f"/products/{product_id}?saved=1", status_code=303)
+
+
 @app.post("/products/{product_id}/media")
 async def upload_media(
     product_id: str,
@@ -265,6 +433,37 @@ async def upload_media(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return RedirectResponse(f"/products/{product_id}", status_code=303)
+
+
+@app.delete("/api/products/{product_id}/media/{asset_id}")
+def delete_media(product_id: str, asset_id: str, db: Session = Depends(get_db)):
+    product = product_or_404(db, product_id)
+    asset = db.get(MediaAsset, asset_id)
+    if not asset or asset.product_id != product.id:
+        raise HTTPException(404, "Медиафайл не найден")
+    path = safe_media_path(settings.media_dir, asset.stored_filename)
+    db.delete(asset)
+    db.flush()
+    _normalize_media_order(product)
+    db.commit()
+    path.unlink(missing_ok=True)
+    return {"ok": True}
+
+
+@app.post("/api/products/{product_id}/media/order")
+async def reorder_media(product_id: str, request: Request, db: Session = Depends(get_db)):
+    product = product_or_404(db, product_id)
+    body = await request.json()
+    ordered_ids = body.get("ids") if isinstance(body, dict) else None
+    if not isinstance(ordered_ids, list) or not all(isinstance(item, str) for item in ordered_ids):
+        raise HTTPException(422, "Передайте список media ids")
+    current = {asset.id: asset for asset in product.media}
+    if len(ordered_ids) != len(current) or set(ordered_ids) != set(current):
+        raise HTTPException(422, "Порядок должен содержать все фотографии и видео изделия")
+    for index, asset_id in enumerate(ordered_ids):
+        current[asset_id].sort_order = index
+    db.commit()
+    return {"ok": True}
 
 
 @app.get("/products/{product_id}/ai", response_class=HTMLResponse)
@@ -500,7 +699,7 @@ def connections_page(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "connections.html",
-        {"integrations": integrations},
+        {"integrations": integrations, "app_base_url": settings.app_base_url.rstrip("/")},
     )
 
 
@@ -555,7 +754,11 @@ def oauth_start(provider: str, db: Session = Depends(get_db)):
     try:
         url = begin_oauth(db, settings, provider)
     except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        provider_label = PROVIDER_LABELS.get(provider, provider)
+        raise HTTPException(
+            400,
+            f"{provider_label}: сначала задайте Client ID/Secret приложения в .env по инструкции на экране подключений",
+        ) from exc
     return RedirectResponse(url, status_code=303)
 
 

@@ -1,1 +1,25 @@
-{% extends 'base.html' %}{% set heading='Импорт из ИИ' %}{% block top_action %}<a class="button" href="/static/help.html#ai-workflow">Как это работает</a>{% endblock %}{% block content %}<section class="grid two"><article class="card"><span class="step">1</span><h3>Скопируйте рабочий запрос</h3><p class="muted">Хаб уже добавил request_id, известные факты, порядок медиа, правила всех площадок и JSON Schema. Приложите к запросу те же фото/видео в том же порядке.</p><textarea id="prompt" class="code" readonly>{{prompt}}</textarea><button class="button full" data-copy="#prompt">Скопировать запрос</button></article><article class="card"><span class="step">2</span><h3>Проверьте и импортируйте ответ</h3><p class="muted">Подойдёт мультимодальная модель, которая умеет анализировать ваши медиа и возвращать строгий JSON. Сначала используйте «Проверить»: неизвестные факты должны остаться в needs_confirmation, а предположения — в assumptions.</p><textarea id="ai-answer" class="code" placeholder='{"schema_version":"bamboo-content-pack/1.0", ...}'></textarea><div class="actions"><button class="button" data-preview="{{product.id}}">Проверить</button><button class="button primary" data-import="{{product.id}}">Импортировать</button></div><pre id="ai-result" class="result"></pre></article></section>{% endblock %}
+{% extends 'base.html' %}
+{% set heading='Подготовка с ИИ' %}
+{% block top_action %}<a class="button" href="/static/help.html#ai-workflow">Как это работает</a>{% endblock %}
+{% block content %}
+<section class="grid two">
+  <article class="card">
+    <span class="step">1</span>
+    <h3>Скопируйте рабочий запрос</h3>
+    <p class="muted">Хаб уже добавил request_id, известные факты, порядок медиа, правила площадок и актуальную JSON Schema. Приложите те же фото/видео в том же порядке: первый кадр — <strong>image_1</strong>, второй — <strong>image_2</strong> и так далее.</p>
+    <textarea id="prompt" class="code" readonly>{{prompt}}</textarea>
+    <button class="button full" data-copy="#prompt">Скопировать запрос</button>
+  </article>
+  <article class="card">
+    <span class="step">2</span>
+    <h3>Проверьте и импортируйте ответ</h3>
+    <p class="muted">Подойдёт мультимодальная модель, которая умеет анализировать ваши медиа и возвращать строгий JSON. Сначала нажмите «Проверить»: хаб покажет понятное резюме, вопросы и предположения без необходимости читать сырой JSON.</p>
+    <textarea id="ai-answer" class="code" placeholder="Вставьте JSON-ответ модели"></textarea>
+    <div class="actions">
+      <button class="button" data-preview="{{product.id}}">Проверить</button>
+      <button class="button primary" data-import="{{product.id}}">Импортировать</button>
+    </div>
+    <div id="ai-result" class="result ai-result" aria-live="polite"></div>
+  </article>
+</section>
+{% endblock %}

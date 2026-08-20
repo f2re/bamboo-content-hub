@@ -23,7 +23,13 @@ def channel_text(publication: Publication, channel: str) -> str:
     text = content.get("caption") or content.get("text") or content.get("description") or content.get("title") or ""
     hashtags = content.get("hashtags") or []
     if hashtags:
-        text = f"{text}\n\n{' '.join(hashtags)}".strip()
+        normalized = []
+        for tag in hashtags:
+            value = str(tag).strip()
+            if value:
+                normalized.append(value if value.startswith("#") else f"#{value}")
+        if normalized:
+            text = f"{text}\n\n{' '.join(normalized)}".strip()
     return text
 
 

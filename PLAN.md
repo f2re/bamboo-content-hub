@@ -1,27 +1,26 @@
 # План разработки
 
-## 0.2.0 — текущая реализация
-- [x] Local-first FastAPI app, SQLite WAL, Alembic.
-- [x] Каталог изделий и медиатека.
-- [x] Bamboo Content Pack 1.0, prompt generator, strict import/merge.
-- [x] Публикации, delivery state, retry/idempotency foundation.
-- [x] Demo, Telegram и ручной Livemaster connector.
-- [x] OAuth framework: state, PKCE, exchange, encrypted token storage, refresh, revoke.
-- [x] Signed media URLs и Meta webhook verification/idempotency storage.
-- [x] Responsive PWA shell, design.md.
-- [x] Docker Compose, migrations, backup/restore/update scripts, CI.
+## Текущее состояние
+- [x] Local-first FastAPI app, SQLite WAL, Alembic, Docker Compose.
+- [x] Каталог изделий, локальная медиатека и ручной редактор характеристик.
+- [x] Редактирование отдельных текстов Instagram, VK, Telegram, Pinterest, Facebook, TikTok, YouTube и Ярмарки мастеров.
+- [x] Bamboo Content Pack 1.0: versioned schema, request_id, строгий JSON/Pydantic import, редакционные правила и встроенная справка.
+- [x] Надёжная очередь публикаций: timezone, atomic claim/lease, retries, stuck recovery, независимые delivery.
+- [x] Автоматические адаптеры Telegram, VK, Pinterest, Instagram, Facebook, TikTok и YouTube; ручной экспорт Ярмарки мастеров.
+- [x] OAuth: state/PKCE, encrypted token storage, refresh/revoke и health checks.
+- [x] Admin auth, Argon2, session/CSRF, security headers, upload signature validation.
+- [x] Signed public media URLs и Meta webhook verification/idempotency storage.
+- [x] Базовая оптимизация медиа: фото с телефона/HEIC, EXIF orientation, resize/JPEG, ffmpeg H.264/AAC MP4, upload progress, reorder/delete/cover.
+- [x] Адаптивная mobile/desktop оболочка и понятные русские статусы публикаций.
+- [x] Backup/restore/update scripts и CI: Ruff, compileall, Alembic, pytest, Docker build.
 
-## Следующий backlog
-### P1
-- Реальные публикационные адаптеры Instagram/Facebook/Pinterest/VK/TikTok/YouTube поверх готового OAuth/core.
-- Provider-specific webhook verifiers для подключаемых событий.
-- UI редактирования всех структурированных характеристик и channel content.
-- Локальная admin-auth (Argon2/session/CSRF) для установок вне доверенной LAN.
+## Открытый P1
+- [ ] AI import: обязательное подтверждение критичных `needs_confirmation`, provenance `user/AI/confirmed`, negative/security tests — #15.
+- [ ] UX: календарь week/month, duplicate/reschedule, capability preview и окончательная accessibility/mobile ревизия — остаток #14.
+- [ ] Подключения: заменить ручной ввод Board/Page/Profile ID выпадающими списками там, где API позволяет получить варианты автоматически.
+- [ ] Media pipeline: хранение оригинала отдельно от delivery variants, metadata/poster/crop и provider-specific variants без ненужного upscale.
+- [ ] Release engineering: coverage, clean-volume/upgrade/restore E2E, GHCR, Dependabot, rollback, branch protection и release checklist — #16.
 
-### P2
-- ffmpeg/libvips media variants и capability matrix площадок.
-- Календарь week/month, drag & drop, duplicate/reschedule.
-- Browser companion для площадок без API.
-
-### P3
-- Analytics и provider-specific метрики после стабилизации публикаций.
+## После стабилизации
+- [ ] Analytics и provider-specific метрики.
+- [ ] Browser companion только для площадок без стабильного публичного API, если он действительно потребуется.

@@ -73,19 +73,19 @@ const updateTikTokDisclosure = (panel) => {
 
   disclosure.hidden = !commercial.checked;
   if (!commercial.checked) {
-    ownBrand.checked = false;
-    branded.checked = false;
+    if (ownBrand) ownBrand.checked = false;
+    if (branded) branded.checked = false;
   }
 
   const selfOnly = [...(privacy?.options || [])].find((option) => option.value === 'SELF_ONLY');
-  if (selfOnly) selfOnly.disabled = Boolean(commercial.checked && branded.checked);
-  if (privacy?.value === 'SELF_ONLY' && branded.checked) privacy.value = '';
+  if (selfOnly) selfOnly.disabled = Boolean(commercial.checked && branded?.checked);
+  if (privacy?.value === 'SELF_ONLY' && branded?.checked) privacy.value = '';
 
   if (consentText) {
-    if (commercial.checked && branded.checked) {
+    if (commercial.checked && branded?.checked) {
       consentText.textContent =
         'Разрешаю отправку в TikTok и принимаю правила брендированного контента и использования музыки.';
-    } else if (commercial.checked && ownBrand.checked) {
+    } else if (commercial.checked && ownBrand?.checked) {
       consentText.textContent =
         'Разрешаю отправку в TikTok и принимаю подтверждение использования музыки.';
     } else {
@@ -211,6 +211,165 @@ const validatePublishForm = (form) => {
   return true;
 };
 
+const renderAiPreview = (body) => {
+  const output = $('#ai-result');
+  if (!output) return;
+  const pack = body?.pack || {};
+  const product = pack.product || {};
+  const content = pack.content || {};
+  const dimensions = product.dimensions || {};
+  const rows = [
+    ['Название', product.name],
+    ['Тип', product.product_type],
+    ['Коллекция', product.collection],
+    ['Цена', product.price?.amount ? `${product.price.amount} ${product.price.currency || 'RUB'}` : null],
+    ['Материалы', (product.materials || []).join(', ')],
+    ['Высота', dimensions.height_mm ? `${dimensions.height_mm} мм` : null],
+    ['Диаметр', dimensions.diameter_mm ? `${dimensions.diameter_mm} мм` : null],
+    ['Объём', dimensions.volume_ml ? `${dimensions.volume_ml} мл` : null],
+    ['Описание', content.full_description || content.short_description],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
+
+  output.innerHTML = '';
+  const title = document.createElement('h4');
+  title.textContent = 'Что предлагает ИИ';
+  output.append(title);
+  const list = document.createElement('dl');
+  list.className = 'ai-preview-list';
+  for (const [label, value] of rows) {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = String(value);
+    list.append(dt, dd);
+  }
+  output.append(list);
+
+  const confirmations = body?.needs_confirmation || [];
+  if (confirmations.length) {
+    const box = document.createElement('div');
+    box.className = 'ai-warning';
+    const heading = document.createElement('strong');
+    heading.textContent = 'Нужно уточнить перед использованием';
+    box.append(heading);
+    const ul = document.createElement('ul');
+    for (const item of confirmations) {
+      const li = document.createElement('li');
+      li.textContent = item.question || item.path;
+      ul.append(li);
+    }
+    box.append(ul);
+    output.append(box);
+  }
+
+  const assumptions = body?.assumptions || [];
+  if (assumptions.length) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = `Предположения ИИ: ${assumptions.length}`;
+    details.append(summary);
+    const ul = document.createElement('ul');
+    for (const item of assumptions) {
+      const li = document.createElement('li');
+      li.textContent = `${item.path}: ${item.basis || 'без подтверждения'}`;
+      ul.append(li);
+    }
+    details.append(ul);
+    output.append(details);
+  }
+};
+
+const uploadWithProgress = (form) => {
+  const input = $('[data-upload-input]', form);
+  if (!input?.files?.length) return false;
+  const status = $('[data-upload-status]', form);
+  const progress = $('[data-upload-progress]', form);
+  const message = $('[data-upload-message]', form);
+  const button = $('button[type="submit"]', form);
+  const data = new FormData(form);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', form.action);
+  const token = csrf();
+  if (token) xhr.setRequestHeader('x-csrf-token', token);
+  xhr.setRequestHeader('Accept', 'text/html,application/json');
+  if (status) status.hidden = false;
+  if (button) button.disabled = true;
+  if (message) message.textContent = `Загрузка: ${input.files.length} файл(ов)…`;
+  xhr.upload.addEventListener('progress', (event) => {
+    if (!event.lengthComputable) return;
+    const percent = Math.round((event.loaded / event.total) * 100);
+    if (progress) progress.style.width = `${percent}%`;
+    if (message) message.textContent = `Загружено ${percent}% · после загрузки медиа будет оптимизировано`;
+  });
+  xhr.addEventListener('load', () => {
+    if (xhr.status >= 200 && xhr.status < 400) {
+      if (message) message.textContent = 'Готово. Обновляю медиатеку…';
+      location.reload();
+      return;
+    }
+    let text = 'Не удалось загрузить файл';
+    try {
+      text = errorMessage(JSON.parse(xhr.responseText), text);
+    } catch (_error) {
+      // keep the human fallback
+    }
+    if (message) message.textContent = text;
+    if (status) status.classList.add('danger');
+    if (button) button.disabled = false;
+  });
+  xhr.addEventListener('error', () => {
+    if (message) message.textContent = 'Соединение прервано. Файл можно загрузить повторно.';
+    if (status) status.classList.add('danger');
+    if (button) button.disabled = false;
+  });
+  xhr.send(data);
+  return true;
+};
+
+const persistMediaOrder = async (grid) => {
+  const ids = $$('[data-media-id]', grid).map((item) => item.dataset.mediaId);
+  if (!ids.length) return;
+  const productId = grid.dataset.productId;
+  const response = await api(`/api/products/${productId}/media/order`, {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({ids}),
+  });
+  if (!response.ok) {
+    alert(errorMessage(await responseBody(response), 'Не удалось сохранить порядок медиа'));
+    location.reload();
+  }
+};
+
+const initMediaDragDrop = () => {
+  for (const grid of $$('[data-media-grid]')) {
+    let dragged = null;
+    grid.addEventListener('dragstart', (event) => {
+      dragged = event.target.closest('[data-media-id]');
+      if (dragged) dragged.classList.add('dragging');
+    });
+    grid.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (!dragged) return;
+      const target = event.target.closest('[data-media-id]');
+      if (!target || target === dragged) return;
+      const box = target.getBoundingClientRect();
+      const after = event.clientX > box.left + box.width / 2;
+      grid.insertBefore(dragged, after ? target.nextSibling : target);
+    });
+    grid.addEventListener('dragend', async () => {
+      if (dragged) dragged.classList.remove('dragging');
+      dragged = null;
+      const items = $$('[data-media-id]', grid);
+      items.forEach((item, index) => {
+        const badge = $('.media-index', item);
+        if (badge) badge.textContent = index === 0 ? 'Обложка' : String(index + 1);
+      });
+      await persistMediaOrder(grid);
+    });
+  }
+};
+
 document.addEventListener('submit', async (event) => {
   const integrationForm = event.target.closest('[data-integration-form]');
   if (integrationForm) {
@@ -248,6 +407,13 @@ document.addEventListener('submit', async (event) => {
     return;
   }
 
+  const uploadForm = event.target.closest('[data-upload-form]');
+  if (uploadForm) {
+    event.preventDefault();
+    uploadWithProgress(uploadForm);
+    return;
+  }
+
   const publishForm = event.target.closest('[data-publish-form]');
   if (publishForm && !validatePublishForm(publishForm)) event.preventDefault();
 });
@@ -268,7 +434,8 @@ document.addEventListener('click', async (event) => {
   const copy = event.target.closest('[data-copy]');
   if (copy) {
     const source = $(copy.dataset.copy);
-    if (source) await navigator.clipboard.writeText(source.value);
+    const value = source?.value ?? source?.textContent ?? '';
+    if (value) await navigator.clipboard.writeText(value);
     const original = copy.textContent;
     copy.textContent = 'Скопировано';
     setTimeout(() => (copy.textContent = original), 1200);
@@ -277,14 +444,16 @@ document.addEventListener('click', async (event) => {
 
   const preview = event.target.closest('[data-preview]');
   if (preview) {
+    preview.disabled = true;
     const response = await api(`/api/products/${preview.dataset.preview}/ai/preview`, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify({text: $('#ai-answer')?.value || ''}),
     });
     const body = await responseBody(response);
-    const output = $('#ai-result');
-    if (output) output.textContent = response.ok ? JSON.stringify(body, null, 2) : errorMessage(body);
+    if (response.ok) renderAiPreview(body);
+    else if ($('#ai-result')) $('#ai-result').textContent = errorMessage(body);
+    preview.disabled = false;
     return;
   }
 
@@ -298,6 +467,23 @@ document.addEventListener('click', async (event) => {
     const body = await responseBody(response);
     if (response.ok) location.href = body.redirect;
     else if ($('#ai-result')) $('#ai-result').textContent = errorMessage(body);
+    return;
+  }
+
+  const deleteMedia = event.target.closest('[data-delete-media]');
+  if (deleteMedia) {
+    const grid = deleteMedia.closest('[data-media-grid]');
+    if (!grid || !confirm('Удалить этот файл из изделия?')) return;
+    deleteMedia.disabled = true;
+    const response = await api(
+      `/api/products/${grid.dataset.productId}/media/${deleteMedia.dataset.deleteMedia}`,
+      {method: 'DELETE'},
+    );
+    if (response.ok) location.reload();
+    else {
+      alert(errorMessage(await responseBody(response), 'Не удалось удалить файл'));
+      deleteMedia.disabled = false;
+    }
     return;
   }
 
@@ -334,5 +520,25 @@ document.addEventListener('click', async (event) => {
   }
 });
 
+for (const zone of $$('.drop-zone')) {
+  for (const eventName of ['dragenter', 'dragover']) {
+    zone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      zone.classList.add('drop-active');
+    });
+  }
+  for (const eventName of ['dragleave', 'drop']) {
+    zone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      zone.classList.remove('drop-active');
+    });
+  }
+  zone.addEventListener('drop', (event) => {
+    const input = $('[data-upload-input]', zone);
+    if (input && event.dataTransfer?.files?.length) input.files = event.dataTransfer.files;
+  });
+}
+
 syncChannelPanels();
 for (const panel of $$('[data-channel-settings="tiktok"]')) updateTikTokDisclosure(panel);
+initMediaDragDrop();
