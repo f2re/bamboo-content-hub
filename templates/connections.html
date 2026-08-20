@@ -1,13 +1,31 @@
 {% extends 'base.html' %}
 {% set heading='Подключения' %}
+{% set provider_meta={
+  'google': {'glyph':'YT', 'caption':'Видео и метаданные YouTube'},
+  'pinterest': {'glyph':'P', 'caption':'Пины на выбранную доску'},
+  'tiktok': {'glyph':'TT', 'caption':'Фото и видео через Direct Post'},
+  'meta': {'glyph':'M', 'caption':'Instagram Professional и Facebook Page'},
+  'vk': {'glyph':'VK', 'caption':'Публикации на стену или в сообщество'},
+  'telegram': {'glyph':'TG', 'caption':'Посты в канал через бота'}
+} %}
+{% block top_action %}
+<a class="button quiet" href="/static/help.html#connections">Справка по подключению</a>
+{% endblock %}
 {% block content %}
-<section class="card connection-intro">
-  <span class="pill">Настройка без .env</span>
-  <h3>Подключение за 2–3 шага</h3>
-  <p class="muted">Откройте кабинет площадки по готовой ссылке, вставьте показанный callback URL, сохраните Client ID и Secret прямо здесь, затем нажмите «Подключить аккаунт». Секреты хранятся зашифрованно и после сохранения не показываются.</p>
+<section class="connections-hero">
+  <div class="connections-hero-copy">
+    <span class="pill">Настройка без .env</span>
+    <h2>Подключите площадки один раз</h2>
+    <p>Обычная настройка выполняется из интерфейса. Bamboo хранит секреты зашифрованно, открывает официальный OAuth и после подключения сам предлагает доступные страницы, доски и стены.</p>
+  </div>
+  <ol class="connections-steps" aria-label="Подключение за 2–3 шага">
+    <li><span>1</span><strong>Откройте кабинет</strong><small>Готовая официальная ссылка уже в карточке.</small></li>
+    <li><span>2</span><strong>Сохраните реквизиты</strong><small>Скопируйте callback и вставьте Client ID/Secret.</small></li>
+    <li><span>3</span><strong>Подключите аккаунт</strong><small>Войдите через OAuth и выберите место публикации.</small></li>
+  </ol>
 </section>
 
-<section class="connection-grid">
+<section class="connections-list" aria-label="Площадки">
   {% for item in integrations %}
   {% set acc=item.account %}
   {% set cfg=item.config %}
@@ -16,181 +34,246 @@
   {% set target_fields=item.fields|selectattr('phase','equalto','target')|list %}
   {% set optional_fields=item.fields|selectattr('phase','equalto','optional')|list %}
   {% set oauth_fields=item.fields|selectattr('phase','equalto','oauth')|list %}
-  <article class="card connection simple-connection" data-connection-card="{{ item.provider }}">
-    <div class="card-head connection-title-row">
-      <div>
-        <h3>{{ item.label }}</h3>
-        <p class="muted" data-connection-status>
-          {% if connected %}Подключено{% elif oauth and cfg.get('oauth_ready') %}Приложение настроено · осталось войти{% elif acc %}Настройка не завершена{% else %}Не подключено{% endif %}
-        </p>
-      </div>
-      <span class="dot {% if connected %}ok{% endif %}"></span>
-    </div>
+  {% set visual=provider_meta[item.provider] %}
+  {% set primary_channel=item.channels[0] if item.channels else none %}
+  {% if connected %}
+    {% set state='connected' %}
+    {% set state_label='Подключено' %}
+  {% elif oauth and cfg.get('oauth_ready') %}
+    {% set state='ready' %}
+    {% set state_label='Готово к входу' %}
+  {% elif acc %}
+    {% set state='incomplete' %}
+    {% set state_label='Не завершено' %}
+  {% else %}
+    {% set state='idle' %}
+    {% set state_label='Не настроено' %}
+  {% endif %}
 
-    {% if item.provider == 'telegram' %}
-    <div class="setup-step">
-      <span class="setup-number">1</span>
-      <div>
-        <strong>Создайте бота</strong>
-        <p class="muted small">BotFather выдаст токен. Затем добавьте бота администратором канала с правом публикации.</p>
-        <a class="button soft" href="https://t.me/BotFather" target="_blank" rel="noopener">Открыть BotFather</a>
-      </div>
-    </div>
-    <div class="setup-step">
-      <span class="setup-number">2</span>
-      <div class="setup-step-body">
-        <strong>Вставьте токен и канал</strong>
-        <form class="integration-form compact-form" data-integration-form data-provider="telegram">
-          {% for field in item.fields %}
-          {% set value=cfg.get(field.name) %}
-          <label>
-            {{ field.label }}
-            <input type="{{ field.type }}" name="{{ field.name }}"
-              value="{% if field.type != 'password' and value is not none %}{{ value }}{% endif %}"
-              placeholder="{% if field.type == 'password' and cfg.get(field.name ~ '_configured') %}Сохранено — оставьте пустым без изменений{% else %}{{ field.placeholder or '' }}{% endif %}"
-              {% if field.type == 'password' %}autocomplete="new-password" data-secret-field{% endif %}>
-            {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
-          </label>
-          {% endfor %}
-          <button class="button primary full" type="submit">Сохранить Telegram</button>
-          <p class="form-message muted" data-config-result aria-live="polite"></p>
-        </form>
-        <button class="button full" type="button" data-health="telegram">Проверить подключение</button>
-        <p class="health-result muted" data-health-result aria-live="polite"></p>
-      </div>
-    </div>
-
-    {% else %}
-    <div class="setup-step">
-      <span class="setup-number">1</span>
-      <div class="setup-step-body">
-        <strong>Создайте приложение {{ item.label }}</strong>
-        <p class="muted small">Ссылка ведёт сразу в официальный кабинет/инструкцию. Создайте Web/OAuth-приложение и скопируйте его Client ID и Client Secret.</p>
-        <div class="quick-links">
-          {% if item.provider == 'google' %}
-          <a class="button soft" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Открыть Google Cloud</a>
-          <a class="button" href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">Включить YouTube API</a>
-          {% elif item.provider == 'pinterest' %}
-          <a class="button soft" href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener">Открыть Pinterest Apps</a>
-          <a class="button" href="https://developers.pinterest.com/docs/getting-started/connect-app/" target="_blank" rel="noopener">Инструкция Pinterest</a>
-          {% elif item.provider == 'tiktok' %}
-          <a class="button soft" href="https://developers.tiktok.com/" target="_blank" rel="noopener">Открыть TikTok Developers</a>
-          <a class="button" href="https://developers.tiktok.com/doc/getting-started-create-an-app" target="_blank" rel="noopener">Как создать приложение</a>
-          {% elif item.provider == 'meta' %}
-          <a class="button soft" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Открыть Meta Apps</a>
-          <a class="button" href="https://developers.facebook.com/docs/development/create-an-app/" target="_blank" rel="noopener">Как создать приложение</a>
-          {% elif item.provider == 'vk' %}
-          <a class="button soft" href="https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/create-application" target="_blank" rel="noopener">Создать приложение VK ID</a>
-          {% endif %}
+  <article class="connection-panel" data-connection-card="{{ item.provider }}">
+    <header class="connection-panel-head">
+      <div class="provider-identity">
+        <span class="provider-mark provider-{{ item.provider }}" aria-hidden="true">{{ visual.glyph }}</span>
+        <div>
+          <h2>{{ item.label }}</h2>
+          <p>{{ visual.caption }}</p>
         </div>
-
-        <p class="field-help callback-label">В поле Redirect URI / Callback URL у площадки вставьте ровно этот адрес:</p>
-        <div class="callback-box important-callback">
-          <code id="callback-{{ item.provider }}">{{ app_base_url }}/oauth/{{ item.provider }}/callback</code>
-          <button class="button small-button" type="button" data-copy="#callback-{{ item.provider }}">Скопировать</button>
-        </div>
-        {% if not app_base_url.startswith('https://') and 'localhost' not in app_base_url and '127.0.0.1' not in app_base_url %}
-        <p class="connection-warning">OAuth-площадка может отклонить callback по обычному HTTP на локальном IP. Для реального OAuth укажите в <code>APP_BASE_URL</code> доступный HTTPS-адрес Hub.</p>
-        {% endif %}
-
-        <form class="integration-form oauth-form" data-integration-form data-provider="{{ item.provider }}">
-          {% for field in oauth_fields %}
-          {% set value=cfg.get(field.name) %}
-          <label>
-            {{ field.label }}
-            <input type="{{ field.type }}" name="{{ field.name }}"
-              value="{% if field.type != 'password' and value is not none %}{{ value }}{% endif %}"
-              placeholder="{% if field.type == 'password' and cfg.get(field.name ~ '_configured') %}Сохранено — оставьте пустым без изменений{% else %}{{ field.placeholder or '' }}{% endif %}"
-              {% if field.type == 'password' %}autocomplete="new-password" data-secret-field{% endif %}>
-            {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
-          </label>
-          {% endfor %}
-          {% if cfg.get('oauth_credentials_source') == 'environment' %}
-          <p class="field-help">Сейчас OAuth-реквизиты уже найдены в <code>.env</code>. Их можно оставить там или сохранить здесь, чтобы дальше управлять подключением из интерфейса.</p>
-          {% endif %}
-          <button class="button full" type="submit">Сохранить реквизиты приложения</button>
-          <p class="form-message muted" data-config-result aria-live="polite"></p>
-        </form>
       </div>
-    </div>
+      <span class="connection-state {{ state }}">
+        <span aria-hidden="true"></span>{{ state_label }}
+      </span>
+    </header>
 
-    <div class="setup-step {% if not cfg.get('oauth_ready') %}setup-step-muted{% endif %}">
-      <span class="setup-number">2</span>
-      <div class="setup-step-body">
-        <strong>Подключите аккаунт</strong>
-        <p class="muted small">Bamboo откроет официальный экран входа {{ item.label }} и получит токен через OAuth. Пароль от площадки в Bamboo не вводится.</p>
-        {% if cfg.get('oauth_ready') %}
-        <a class="button primary full" href="/api/oauth/{{ item.provider }}/start">
-          {% if connected %}Переподключить аккаунт{% else %}Подключить аккаунт{% endif %}
-        </a>
-        {% else %}
-        <button class="button full" type="button" disabled>Сначала сохраните Client ID и Secret</button>
-        {% endif %}
-      </div>
-    </div>
-
-    {% if target_fields or optional_fields %}
-    <div class="setup-step {% if not connected %}setup-step-muted{% endif %}">
-      <span class="setup-number">3</span>
-      <div class="setup-step-body">
-        <strong>{% if target_fields %}Выберите, куда публиковать{% else %}Дополнительные параметры{% endif %}</strong>
-        {% if target_fields %}
-        <p class="muted small">После OAuth Bamboo может сам получить доступные варианты. Нажмите кнопку — нужные ID искать вручную не придётся.</p>
+    <div class="connection-panel-actions">
+      {% if item.provider == 'telegram' and connected %}
+      <button class="button primary" type="button" data-health="telegram">Проверить Telegram</button>
+      {% elif oauth and connected and primary_channel %}
+      <button class="button primary" type="button" data-health="{{ primary_channel.name }}">Проверить подключение</button>
+      {% elif oauth and cfg.get('oauth_ready') %}
+      <a class="button primary" href="/api/oauth/{{ item.provider }}/start">Подключить аккаунт</a>
+      {% endif %}
+      <p class="connection-next muted small">
         {% if connected %}
-          {% if item.provider == 'pinterest' %}
-          <button class="button soft full" type="button" data-health="pinterest">Найти мои доски Pinterest</button>
-          {% elif item.provider == 'meta' %}
-          <button class="button soft full" type="button" data-health="facebook">Найти мои страницы Meta</button>
-          {% elif item.provider == 'vk' %}
-          <button class="button soft full" type="button" data-health="vk">Найти доступные стены VK</button>
-          {% endif %}
+        Подключение активно. Настройки и дополнительные проверки находятся ниже.
+        {% elif oauth and cfg.get('oauth_ready') %}
+        Реквизиты сохранены. Осталось войти в аккаунт площадки.
+        {% elif item.provider == 'telegram' %}
+        Нужны токен BotFather и @имя_канала.
         {% else %}
-        <button class="button full" type="button" disabled>Сначала подключите аккаунт</button>
+        Начните с создания OAuth-приложения у площадки.
         {% endif %}
-        <div class="connection-choice-list" data-choice-list></div>
-        {% endif %}
+      </p>
+    </div>
 
-        <form class="integration-form target-form" data-integration-form data-provider="{{ item.provider }}">
-          {% for field in target_fields %}
-          {% set value=cfg.get(field.name) %}
-          <label>
-            {{ field.label }}
-            <input type="{{ field.type }}" name="{{ field.name }}" value="{{ value or '' }}" placeholder="{{ field.placeholder or '' }}">
-            {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
-          </label>
-          {% endfor %}
-          {% if optional_fields %}
-          <details class="advanced-settings">
-            <summary>Дополнительно</summary>
-            {% for field in optional_fields %}
+    <p class="health-result connection-card-result muted" data-health-result aria-live="polite"></p>
+
+    <details class="connection-disclosure" name="connection-setup">
+      <summary>
+        <span>{% if connected %}Настройки подключения{% else %}Настроить подключение{% endif %}</span>
+        <span class="disclosure-hint">{% if connected %}Изменить или отключить{% else %}Показать шаги{% endif %}</span>
+      </summary>
+
+      <div class="connection-disclosure-body">
+        {% if item.provider == 'telegram' %}
+        <section class="connection-section">
+          <div class="connection-section-head">
+            <span class="section-index">1</span>
+            <div>
+              <h3>Создайте бота</h3>
+              <p>BotFather выдаст токен. Добавьте бота администратором канала с правом публикации.</p>
+            </div>
+          </div>
+          <a class="button soft" href="https://t.me/BotFather" target="_blank" rel="noopener">Открыть BotFather</a>
+        </section>
+
+        <section class="connection-section">
+          <div class="connection-section-head">
+            <span class="section-index">2</span>
+            <div>
+              <h3>Укажите токен и канал</h3>
+              <p>Для публичного канала достаточно значения вида <code>@bamboopottery</code>.</p>
+            </div>
+          </div>
+          <form class="integration-form connection-form" data-integration-form data-provider="telegram">
+            {% for field in item.fields %}
             {% set value=cfg.get(field.name) %}
             <label>
               {{ field.label }}
-              <input type="{{ field.type }}" name="{{ field.name }}" value="{{ value or '' }}" placeholder="{{ field.placeholder or '' }}">
+              <input type="{{ field.type }}" name="{{ field.name }}"
+                value="{% if field.type != 'password' and value is not none %}{{ value }}{% endif %}"
+                placeholder="{% if field.type == 'password' and cfg.get(field.name ~ '_configured') %}Сохранено — оставьте пустым без изменений{% else %}{{ field.placeholder or '' }}{% endif %}"
+                {% if field.type == 'password' %}autocomplete="new-password" data-secret-field{% endif %}>
               {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
             </label>
             {% endfor %}
-          </details>
-          {% endif %}
-          {% if target_fields or optional_fields %}
-          <button class="button full" type="submit">Сохранить выбор</button>
-          <p class="form-message muted" data-config-result aria-live="polite"></p>
-          {% endif %}
-        </form>
-      </div>
-    </div>
-    {% endif %}
+            <button class="button primary full" type="submit">Сохранить Telegram</button>
+            <p class="form-message muted" data-config-result aria-live="polite"></p>
+          </form>
+        </section>
 
-    {% if connected %}
-    <div class="connection-checks simple-checks">
-      {% for channel in item.channels %}
-      <button class="link" type="button" data-health="{{ channel.name }}">Проверить {{ channel.label }}</button>
-      {% endfor %}
-    </div>
-    <p class="health-result muted" data-health-result aria-live="polite"></p>
-    <button class="link danger" type="button" data-disconnect="{{ item.provider }}">Отключить аккаунт</button>
-    {% endif %}
-    {% endif %}
+        {% else %}
+        <section class="connection-section">
+          <div class="connection-section-head">
+            <span class="section-index">1</span>
+            <div>
+              <h3>Создайте приложение</h3>
+              <p>Откройте официальный кабинет, создайте Web/OAuth-приложение и скопируйте Client ID и Client Secret.</p>
+            </div>
+          </div>
+
+          <div class="quick-links">
+            {% if item.provider == 'google' %}
+            <a class="button soft" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Открыть Google Cloud</a>
+            <a class="button quiet" href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">Включить YouTube API</a>
+            {% elif item.provider == 'pinterest' %}
+            <a class="button soft" href="https://developers.pinterest.com/apps/" target="_blank" rel="noopener">Открыть Pinterest Apps</a>
+            <a class="button quiet" href="https://developers.pinterest.com/docs/getting-started/connect-app/" target="_blank" rel="noopener">Инструкция Pinterest</a>
+            {% elif item.provider == 'tiktok' %}
+            <a class="button soft" href="https://developers.tiktok.com/" target="_blank" rel="noopener">Открыть TikTok Developers</a>
+            <a class="button quiet" href="https://developers.tiktok.com/doc/getting-started-create-an-app" target="_blank" rel="noopener">Как создать приложение</a>
+            {% elif item.provider == 'meta' %}
+            <a class="button soft" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">Открыть Meta Apps</a>
+            <a class="button quiet" href="https://developers.facebook.com/docs/development/create-an-app/" target="_blank" rel="noopener">Как создать приложение</a>
+            {% elif item.provider == 'vk' %}
+            <a class="button soft" href="https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/create-application" target="_blank" rel="noopener">Создать приложение VK ID</a>
+            {% endif %}
+          </div>
+
+          <div class="callback-panel">
+            <div>
+              <span>Redirect URI / Callback URL</span>
+              <code id="callback-{{ item.provider }}">{{ app_base_url }}/oauth/{{ item.provider }}/callback</code>
+            </div>
+            <button class="button small-button" type="button" data-copy="#callback-{{ item.provider }}">Скопировать</button>
+          </div>
+
+          {% if not app_base_url.startswith('https://') and 'localhost' not in app_base_url and '127.0.0.1' not in app_base_url %}
+          <p class="connection-warning">OAuth-площадка может отклонить обычный HTTP callback на локальном IP. Для реального подключения укажите доступный HTTPS-адрес в <code>APP_BASE_URL</code>.</p>
+          {% endif %}
+
+          <form class="integration-form connection-form oauth-form" data-integration-form data-provider="{{ item.provider }}">
+            <div class="connection-fields">
+              {% for field in oauth_fields %}
+              {% set value=cfg.get(field.name) %}
+              <label>
+                {{ field.label }}
+                <input type="{{ field.type }}" name="{{ field.name }}"
+                  value="{% if field.type != 'password' and value is not none %}{{ value }}{% endif %}"
+                  placeholder="{% if field.type == 'password' and cfg.get(field.name ~ '_configured') %}Сохранено — оставьте пустым без изменений{% else %}{{ field.placeholder or '' }}{% endif %}"
+                  {% if field.type == 'password' %}autocomplete="new-password" data-secret-field{% endif %}>
+                {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
+              </label>
+              {% endfor %}
+            </div>
+            {% if cfg.get('oauth_credentials_source') == 'environment' %}
+            <p class="field-help">Реквизиты уже найдены в <code>.env</code>. Их можно оставить там или сохранить в интерфейсе.</p>
+            {% endif %}
+            <button class="button full" type="submit">Сохранить реквизиты приложения</button>
+            <p class="form-message muted" data-config-result aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="connection-section">
+          <div class="connection-section-head">
+            <span class="section-index">2</span>
+            <div>
+              <h3>Подключите аккаунт</h3>
+              <p>Вход выполняется на официальной странице {{ item.label }}. Пароль от площадки Bamboo не получает.</p>
+            </div>
+          </div>
+          {% if cfg.get('oauth_ready') %}
+          <a class="button primary full" href="/api/oauth/{{ item.provider }}/start">
+            {% if connected %}Переподключить аккаунт{% else %}Подключить аккаунт{% endif %}
+          </a>
+          {% else %}
+          <button class="button full" type="button" disabled>Сначала сохраните Client ID и Secret</button>
+          {% endif %}
+        </section>
+
+        {% if target_fields or optional_fields %}
+        <section class="connection-section">
+          <div class="connection-section-head">
+            <span class="section-index">3</span>
+            <div>
+              <h3>{% if target_fields %}Выберите место публикации{% else %}Дополнительные параметры{% endif %}</h3>
+              <p>{% if target_fields %}После OAuth Bamboo получит доступные варианты. Выберите по названию — ID сохранится автоматически.{% else %}Эти настройки необязательны и имеют безопасные значения по умолчанию.{% endif %}</p>
+            </div>
+          </div>
+
+          {% if target_fields %}
+            {% if connected %}
+              {% if item.provider == 'pinterest' %}
+              <button class="button soft full" type="button" data-health="pinterest">Найти мои доски Pinterest</button>
+              {% elif item.provider == 'meta' %}
+              <button class="button soft full" type="button" data-health="facebook">Найти мои страницы Meta</button>
+              {% elif item.provider == 'vk' %}
+              <button class="button soft full" type="button" data-health="vk">Найти доступные стены VK</button>
+              {% endif %}
+            {% else %}
+            <button class="button full" type="button" disabled>Сначала подключите аккаунт</button>
+            {% endif %}
+            <div class="connection-choice-list" data-choice-list></div>
+          {% endif %}
+
+          <details class="manual-settings">
+            <summary>{% if target_fields %}Указать ID вручную{% else %}Открыть дополнительные параметры{% endif %}</summary>
+            <form class="integration-form target-form connection-form" data-integration-form data-provider="{{ item.provider }}">
+              {% for field in target_fields %}
+              {% set value=cfg.get(field.name) %}
+              <label>
+                {{ field.label }}
+                <input type="{{ field.type }}" name="{{ field.name }}" value="{{ value or '' }}" placeholder="{{ field.placeholder or '' }}">
+                {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
+              </label>
+              {% endfor %}
+              {% for field in optional_fields %}
+              {% set value=cfg.get(field.name) %}
+              <label>
+                {{ field.label }}
+                <input type="{{ field.type }}" name="{{ field.name }}" value="{{ value or '' }}" placeholder="{{ field.placeholder or '' }}">
+                {% if field.help %}<span class="field-help">{{ field.help }}</span>{% endif %}
+              </label>
+              {% endfor %}
+              <button class="button full" type="submit">Сохранить выбор</button>
+              <p class="form-message muted" data-config-result aria-live="polite"></p>
+            </form>
+          </details>
+        </section>
+        {% endif %}
+
+        {% if connected %}
+        <footer class="connection-management">
+          <div class="connection-checks simple-checks">
+            {% for channel in item.channels %}
+            <button class="link" type="button" data-health="{{ channel.name }}">Проверить {{ channel.label }}</button>
+            {% endfor %}
+          </div>
+          <button class="link danger" type="button" data-disconnect="{{ item.provider }}">Отключить аккаунт</button>
+        </footer>
+        {% endif %}
+        {% endif %}
+      </div>
+    </details>
   </article>
   {% endfor %}
 </section>
