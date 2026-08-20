@@ -1,1 +1,23 @@
-{% extends 'base.html' %}{% set heading='Сегодня' %}{% block top_action %}<a class="button primary" href="/products">Новое изделие</a>{% endblock %}{% block content %}<section class="hero"><div><span class="pill">Локально и под вашим контролем</span><h2>От изделия до публикации — в одном месте.</h2><p>Загрузите фотографии, подготовьте пакет через ИИ и опубликуйте в нужные каналы.</p></div></section><section class="grid two"><article class="card"><div class="card-head"><h3>Последние изделия</h3><a href="/products">Все</a></div>{% for p in products %}<a class="row" href="/products/{{p.id}}"><strong>{{p.name}}</strong><span>Открыть →</span></a>{% else %}<div class="empty">Пока нет изделий. Создайте первое — это займёт несколько секунд.</div>{% endfor %}</article><article class="card"><div class="card-head"><h3>Публикации</h3><a href="/publications">Очередь</a></div>{% for p in publications %}<div class="row"><strong>{{p.status}}</strong><span>{{p.created_at.strftime('%d.%m %H:%M')}}</span></div>{% else %}<div class="empty">Здесь появятся запланированные и завершённые публикации.</div>{% endfor %}</article></section>{% endblock %}
+{% extends 'base.html' %}
+{% set heading='Сегодня' %}
+{% set publication_labels={'draft':'Черновик','scheduled':'Запланировано','processing':'Публикуется','completed':'Опубликовано','partially_failed':'Есть ошибки'} %}
+{% block top_action %}<a class="button primary" href="/products">Новое изделие</a>{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <span class="pill">Локально и под вашим контролем</span>
+    <h2>От изделия до публикации — в одном месте.</h2>
+    <p>Добавьте фото или видео, заполните карточку вручную или через ИИ, проверьте тексты и опубликуйте в нужные каналы.</p>
+  </div>
+</section>
+<section class="grid two">
+  <article class="card">
+    <div class="card-head"><h3>Последние изделия</h3><a href="/products">Все</a></div>
+    {% for p in products %}<a class="row" href="/products/{{p.id}}"><strong>{{p.name}}</strong><span>Открыть →</span></a>{% else %}<div class="empty">Пока нет изделий. Создайте первое — это займёт несколько секунд.</div>{% endfor %}
+  </article>
+  <article class="card">
+    <div class="card-head"><h3>Публикации</h3><a href="/publications">Очередь</a></div>
+    {% for p in publications %}<div class="row"><strong>{{ publication_labels.get(p.status, p.status) }}</strong><span>{{ p.created_at|local_datetime }}</span></div>{% else %}<div class="empty">Здесь появятся запланированные и завершённые публикации.</div>{% endfor %}
+  </article>
+</section>
+{% endblock %}
