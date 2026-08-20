@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -45,7 +45,11 @@ def provider_registry(settings: Settings) -> dict[str, OAuthProvider]:
                 "https://www.googleapis.com/auth/youtube.readonly",
             ),
             use_pkce=True,
-            extra_authorize={"access_type": "offline", "include_granted_scopes": "true", "prompt": "consent"},
+            extra_authorize={
+                "access_type": "offline",
+                "include_granted_scopes": "true",
+                "prompt": "consent",
+            },
         ),
         "pinterest": OAuthProvider(
             name="pinterest",
@@ -93,10 +97,34 @@ def provider_registry(settings: Settings) -> dict[str, OAuthProvider]:
             token_url=settings.vk_token_url,
             client_id=settings.vk_client_id,
             client_secret=settings.vk_client_secret,
-            scopes=("wall", "photos", "video", "offline"),
+            scopes=("wall", "photos", "video", "groups", "offline"),
             use_pkce=True,
         ),
     }
+
+
+def _configured_provider(
+    db: Session,
+    settings: Settings,
+    provider_name: str,
+) -> OAuthProvider | None:
+    provider = provider_registry(settings).get(provider_name)
+    if not provider:
+        return None
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider_name,
+            IntegrationAccount.account_key == "default",
+        )
+    )
+    if not account or not account.encrypted_credentials:
+        return provider
+    credentials = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
+    return replace(
+        provider,
+        client_id=credentials.get("oauth_client_id") or provider.client_id,
+        client_secret=credentials.get("oauth_client_secret") or provider.client_secret,
+    )
 
 
 def _aware(dt: datetime) -> datetime:
@@ -104,11 +132,13 @@ def _aware(dt: datetime) -> datetime:
 
 
 def begin_oauth(db: Session, settings: Settings, provider_name: str) -> str:
-    provider = provider_registry(settings).get(provider_name)
+    provider = _configured_provider(db, settings, provider_name)
     if not provider:
         raise ValueError("unknown OAuth provider")
-    if not provider.client_id:
-        raise ValueError(f"{provider_name} client id is not configured")
+    if not provider.client_id or not provider.client_secret:
+        raise ValueError(
+            f"{provider_name} OAuth credentials are not configured; save Client ID and Client Secret first"
+        )
     redirect_uri = f"{settings.app_base_url.rstrip('/')}/oauth/{provider_name}/callback"
     state = random_token(32)
     verifier = challenge = None
@@ -137,15 +167,29 @@ def begin_oauth(db: Session, settings: Settings, provider_name: str) -> str:
     return f"{provider.authorize_url}?{urlencode(params)}"
 
 
-def consume_state(db: Session, settings: Settings, provider_name: str, state: str) -> tuple[OAuthState, str | None]:
-    row = db.scalar(select(OAuthState).where(OAuthState.state_hash == token_hash(state), OAuthState.provider == provider_name))
+def consume_state(
+    db: Session,
+    settings: Settings,
+    provider_name: str,
+    state: str,
+) -> tuple[OAuthState, str | None]:
+    row = db.scalar(
+        select(OAuthState).where(
+            OAuthState.state_hash == token_hash(state),
+            OAuthState.provider == provider_name,
+        )
+    )
     if not row or row.used_at is not None:
         raise ValueError("invalid or already used OAuth state")
     if _aware(row.expires_at) < datetime.now(UTC):
         raise ValueError("OAuth state expired")
     row.used_at = datetime.now(UTC)
     db.commit()
-    verifier = CredentialCipher(settings).decrypt_text(row.code_verifier_encrypted) if row.code_verifier_encrypted else None
+    verifier = (
+        CredentialCipher(settings).decrypt_text(row.code_verifier_encrypted)
+        if row.code_verifier_encrypted
+        else None
+    )
     return row, verifier
 
 
@@ -162,8 +206,15 @@ def _auth_and_data(provider: OAuthProvider, data: dict) -> tuple[dict, tuple[str
     return data, auth
 
 
-async def exchange_code(db: Session, settings: Settings, provider_name: str, code: str, state: str, client: httpx.AsyncClient | None = None) -> IntegrationAccount:
-    provider = provider_registry(settings).get(provider_name)
+async def exchange_code(
+    db: Session,
+    settings: Settings,
+    provider_name: str,
+    code: str,
+    state: str,
+    client: httpx.AsyncClient | None = None,
+) -> IntegrationAccount:
+    provider = _configured_provider(db, settings, provider_name)
     if not provider:
         raise ValueError("unknown OAuth provider")
     state_row, verifier = consume_state(db, settings, provider_name, state)
@@ -191,7 +242,12 @@ async def exchange_code(db: Session, settings: Settings, provider_name: str, cod
     scopes = token.get("scope") or provider.scopes
     if isinstance(scopes, str):
         scopes = scopes.replace(",", " ").split()
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == provider_name, IntegrationAccount.account_key == "default"))
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider_name,
+            IntegrationAccount.account_key == "default",
+        )
+    )
     if not account:
         account = IntegrationAccount(provider=provider_name, account_key="default")
         db.add(account)
@@ -209,8 +265,13 @@ async def exchange_code(db: Session, settings: Settings, provider_name: str, cod
     return account
 
 
-async def refresh_account(db: Session, settings: Settings, account: IntegrationAccount, client: httpx.AsyncClient | None = None) -> IntegrationAccount:
-    provider = provider_registry(settings).get(account.provider)
+async def refresh_account(
+    db: Session,
+    settings: Settings,
+    account: IntegrationAccount,
+    client: httpx.AsyncClient | None = None,
+) -> IntegrationAccount:
+    provider = _configured_provider(db, settings, account.provider)
     if not provider:
         raise ValueError("unknown OAuth provider")
     credentials = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
@@ -242,11 +303,23 @@ async def refresh_account(db: Session, settings: Settings, account: IntegrationA
     return account
 
 
-async def valid_access_token(db: Session, settings: Settings, provider_name: str, safety_window_seconds: int = 600) -> str:
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == provider_name, IntegrationAccount.account_key == "default"))
+async def valid_access_token(
+    db: Session,
+    settings: Settings,
+    provider_name: str,
+    safety_window_seconds: int = 600,
+) -> str:
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider_name,
+            IntegrationAccount.account_key == "default",
+        )
+    )
     if not account or not account.encrypted_credentials:
         raise ValueError(f"{provider_name} is not connected")
-    if account.expires_at and _aware(account.expires_at) <= datetime.now(UTC) + timedelta(seconds=safety_window_seconds):
+    if account.expires_at and _aware(account.expires_at) <= datetime.now(UTC) + timedelta(
+        seconds=safety_window_seconds
+    ):
         account = await refresh_account(db, settings, account)
     token = CredentialCipher(settings).decrypt_json(account.encrypted_credentials).get("access_token")
     if not token:
@@ -254,9 +327,19 @@ async def valid_access_token(db: Session, settings: Settings, provider_name: str
     return token
 
 
-async def revoke_account(db: Session, settings: Settings, provider_name: str, client: httpx.AsyncClient | None = None) -> None:
-    provider = provider_registry(settings).get(provider_name)
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == provider_name, IntegrationAccount.account_key == "default"))
+async def revoke_account(
+    db: Session,
+    settings: Settings,
+    provider_name: str,
+    client: httpx.AsyncClient | None = None,
+) -> None:
+    provider = _configured_provider(db, settings, provider_name)
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider_name,
+            IntegrationAccount.account_key == "default",
+        )
+    )
     if not account:
         return
     credentials = CredentialCipher(settings).decrypt_json(account.encrypted_credentials)
@@ -275,7 +358,8 @@ async def revoke_account(db: Session, settings: Settings, provider_name: str, cl
     preserved = {
         key: value
         for key, value in credentials.items()
-        if key not in {
+        if key
+        not in {
             "access_token",
             "refresh_token",
             "id_token",
@@ -286,7 +370,9 @@ async def revoke_account(db: Session, settings: Settings, provider_name: str, cl
             "open_id",
         }
     }
-    account.encrypted_credentials = CredentialCipher(settings).encrypt_json(preserved) if preserved else None
+    account.encrypted_credentials = (
+        CredentialCipher(settings).encrypt_json(preserved) if preserved else None
+    )
     account.status = "configured" if preserved else "disconnected"
     account.expires_at = None
     db.commit()

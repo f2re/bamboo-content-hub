@@ -23,11 +23,72 @@ const errorMessage = (body, fallback = 'Не удалось выполнить �
   return fallback;
 };
 
+const copyText = async (source) => {
+  const text = 'value' in source ? source.value : source.textContent || '';
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const active = document.activeElement;
+  let target = source;
+  let temporary = false;
+  if (!(source instanceof HTMLTextAreaElement) && !(source instanceof HTMLInputElement)) {
+    target = document.createElement('textarea');
+    target.value = text;
+    target.setAttribute('readonly', '');
+    target.style.position = 'fixed';
+    target.style.opacity = '0';
+    document.body.append(target);
+    temporary = true;
+  }
+  target.focus();
+  target.select();
+  if (target.setSelectionRange) target.setSelectionRange(0, text.length);
+  const copied = document.execCommand('copy');
+  if (temporary) target.remove();
+  if (active?.focus) active.focus();
+  if (!copied) throw new Error('copy failed');
+};
+
 const healthText = (body) => {
   const details = body?.details || {};
   const account = details.nickname || details.title || details.username || '';
   const suffix = account ? ` · ${account}` : '';
   return `${body?.message || (body?.ok ? 'Подключение работает' : 'Проверка не пройдена')}${suffix}`;
+};
+
+const renderConnectionChoices = (scope, body) => {
+  const host = $('[data-choice-list]', scope);
+  if (!host) return;
+  host.innerHTML = '';
+  const choices = body?.details?.choices;
+  if (!Array.isArray(choices) || !choices.length) return;
+
+  const title = document.createElement('p');
+  title.className = 'field-help';
+  title.textContent = 'Выберите вариант — ID подставятся и сохранятся автоматически:';
+  host.append(title);
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== 'object' || typeof choice.values !== 'object') continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'choice-button';
+    button.textContent = choice.label || 'Выбрать';
+    button.addEventListener('click', () => {
+      const form = $('.target-form', scope) || $('[data-integration-form]', scope);
+      if (!form) return;
+      for (const [name, value] of Object.entries(choice.values || {})) {
+        const input = $(`[name="${name}"]`, form);
+        if (input) input.value = value ?? '';
+      }
+      const message = $('[data-config-result]', form);
+      if (message) message.textContent = 'Выбрано. Сохраняю…';
+      form.requestSubmit();
+    });
+    host.append(button);
+  }
 };
 
 const runHealthCheck = async (button) => {
@@ -43,6 +104,7 @@ const runHealthCheck = async (button) => {
       output.textContent = response.ok ? healthText(body) : errorMessage(body);
       output.classList.toggle('danger', !response.ok || !body.ok);
     }
+    renderConnectionChoices(scope, body);
     return body;
   } catch (_error) {
     if (output) {
@@ -396,8 +458,8 @@ document.addEventListener('submit', async (event) => {
       });
       const body = await responseBody(response);
       if (!response.ok) throw new Error(errorMessage(body));
-      if (output) output.textContent = 'Настройки сохранены';
-      setTimeout(() => location.reload(), 500);
+      if (output) output.textContent = 'Сохранено';
+      setTimeout(() => location.reload(), 450);
     } catch (error) {
       if (output) {
         output.textContent = error.message || 'Не удалось сохранить настройки';
@@ -434,11 +496,28 @@ document.addEventListener('click', async (event) => {
   const copy = event.target.closest('[data-copy]');
   if (copy) {
     const source = $(copy.dataset.copy);
-    const value = source?.value ?? source?.textContent ?? '';
-    if (value) await navigator.clipboard.writeText(value);
+    if (!source) return;
     const original = copy.textContent;
-    copy.textContent = 'Скопировано';
-    setTimeout(() => (copy.textContent = original), 1200);
+    copy.disabled = true;
+    try {
+      await copyText(source);
+      copy.textContent = 'Скопировано';
+    } catch (_error) {
+      copy.textContent = 'Не удалось скопировать';
+    } finally {
+      setTimeout(() => {
+        copy.textContent = original;
+        copy.disabled = false;
+      }, 1400);
+    }
+    return;
+  }
+
+  const reloadPrompt = event.target.closest('[data-reload-prompt]');
+  if (reloadPrompt) {
+    reloadPrompt.disabled = true;
+    reloadPrompt.textContent = 'Обновляю…';
+    location.reload();
     return;
   }
 
