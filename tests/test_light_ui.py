@@ -2,8 +2,9 @@ def test_application_uses_light_design_layer(client):
     page = client.get("/connections")
     assert page.status_code == 200
     assert 'content="light"' in page.text
-    assert 'href="/static/apple-ui.css"' in page.text
-    assert 'href="/static/manual-mode.css"' in page.text
+    assert 'href="/static/apple-ui.css?v=' in page.text
+    assert 'href="/static/manual-mode.css?v=' in page.text
+    assert '/static/connections-enhance.js?v=' in page.text
     assert 'aria-current="page"' in page.text
 
 
@@ -28,3 +29,10 @@ def test_connections_are_progressive_manual_first_and_not_four_dense_columns(cli
     assert manual_css.status_code == 200
     assert ".manual-package-grid" in manual_css.text
     assert ".api-mode-details" in manual_css.text
+    assert ".browser-assistant-card" in manual_css.text
+
+    enhancement = client.get("/static/connections-enhance.js")
+    assert enhancement.status_code == 200
+    assert "data-connection-card" not in enhancement.text  # DOM API is used instead of unsafe HTML.
+    assert "livemaster" in enhancement.text
+    assert "Нужно только для автоматического API-режима" in enhancement.text
