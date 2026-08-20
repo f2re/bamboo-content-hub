@@ -40,7 +40,10 @@ def provider_registry(settings: Settings) -> dict[str, OAuthProvider]:
             revoke_url="https://oauth2.googleapis.com/revoke",
             client_id=settings.google_client_id,
             client_secret=settings.google_client_secret,
-            scopes=("https://www.googleapis.com/auth/youtube.upload",),
+            scopes=(
+                "https://www.googleapis.com/auth/youtube.upload",
+                "https://www.googleapis.com/auth/youtube.readonly",
+            ),
             use_pkce=True,
             extra_authorize={"access_type": "offline", "include_granted_scopes": "true", "prompt": "consent"},
         ),

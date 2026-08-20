@@ -20,11 +20,25 @@ from sqlalchemy.orm import Session
 from .ai_pack import build_prompt, parse_pack
 from .config import get_settings
 from .db import SessionLocal, get_db
-from .models import DeliveryStatus, IntegrationAccount, MediaAsset, Product, Publication, PublicationStatus, WebhookEvent
+from .integrations.service import (
+    CHANNELS_BY_PROVIDER,
+    channel_health,
+    merge_provider_config,
+    provider_config_fields,
+    public_provider_config,
+)
+from .models import (
+    DeliveryStatus,
+    IntegrationAccount,
+    MediaAsset,
+    Product,
+    Publication,
+    PublicationStatus,
+    WebhookEvent,
+)
 from .oauth import begin_oauth, exchange_code, refresh_account, revoke_account
 from .publisher import process_delivery
 from .security import (
-    CredentialCipher,
     create_session_token,
     safe_media_path,
     sign_media_token,
@@ -43,6 +57,30 @@ from .web_security import SESSION_COOKIE, SecurityMiddleware
 
 settings = get_settings()
 logger = logging.getLogger("bamboo.scheduler")
+
+PROVIDER_LABELS = {
+    "google": "Google / YouTube",
+    "pinterest": "Pinterest",
+    "tiktok": "TikTok",
+    "meta": "Meta",
+    "vk": "VK",
+    "telegram": "Telegram",
+}
+CHANNEL_LABELS = {
+    "youtube": "YouTube",
+    "pinterest": "Pinterest",
+    "tiktok": "TikTok",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "vk": "VK",
+    "telegram": "Telegram",
+}
+STATUS_LABELS = {
+    "connected": "Подключено",
+    "configured": "Настроено частично",
+    "reauthorize": "Нужно переподключить",
+    "error": "Ошибка подключения",
+}
 
 
 def _template_context(request: Request) -> dict:
@@ -65,6 +103,14 @@ def _safe_next_path(value: str | None) -> str:
     return value
 
 
+def _bool_value(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 templates.env.filters["local_datetime"] = _local_datetime
 
 
@@ -78,7 +124,10 @@ async def scheduler_loop() -> None:
                     except asyncio.CancelledError:
                         raise
                     except Exception:
-                        logger.exception("Delivery processing failed", extra={"delivery_id": delivery.id})
+                        logger.exception(
+                            "Delivery processing failed",
+                            extra={"delivery_id": delivery.id},
+                        )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -172,8 +221,14 @@ def health_ready(db: Session = Depends(get_db)):
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     products = list(db.scalars(select(Product).order_by(Product.updated_at.desc()).limit(6)))
-    publications = list(db.scalars(select(Publication).order_by(Publication.created_at.desc()).limit(8)))
-    return templates.TemplateResponse(request, "dashboard.html", {"products": products, "publications": publications})
+    publications = list(
+        db.scalars(select(Publication).order_by(Publication.created_at.desc()).limit(8))
+    )
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {"products": products, "publications": publications},
+    )
 
 
 @app.get("/products", response_class=HTMLResponse)
@@ -197,7 +252,11 @@ def product_page(product_id: str, request: Request, db: Session = Depends(get_db
 
 
 @app.post("/products/{product_id}/media")
-async def upload_media(product_id: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+async def upload_media(
+    product_id: str,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
     product = product_or_404(db, product_id)
     start = len(product.media)
     try:
@@ -211,13 +270,38 @@ async def upload_media(product_id: str, files: list[UploadFile] = File(...), db:
 @app.get("/products/{product_id}/ai", response_class=HTMLResponse)
 def ai_page(product_id: str, request: Request, db: Session = Depends(get_db)):
     product = product_or_404(db, product_id)
-    request_id = product.ai_request_id or f"BCP-{datetime.now(UTC):%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+    request_id = product.ai_request_id or (
+        f"BCP-{datetime.now(UTC):%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+    )
     if not product.ai_request_id:
         product.ai_request_id = request_id
         db.commit()
-    known = {"name": product.name, "sku": product.sku, "product_type": product.product_type, **(product.facts or {})}
-    prompt = build_prompt(request_id, len(product.media), known, ["instagram", "vk", "telegram", "pinterest", "facebook", "tiktok", "youtube", "livemaster"])
-    return templates.TemplateResponse(request, "ai.html", {"product": product, "prompt": prompt})
+    known = {
+        "name": product.name,
+        "sku": product.sku,
+        "product_type": product.product_type,
+        **(product.facts or {}),
+    }
+    prompt = build_prompt(
+        request_id,
+        len(product.media),
+        known,
+        [
+            "instagram",
+            "vk",
+            "telegram",
+            "pinterest",
+            "facebook",
+            "tiktok",
+            "youtube",
+            "livemaster",
+        ],
+    )
+    return templates.TemplateResponse(
+        request,
+        "ai.html",
+        {"product": product, "prompt": prompt},
+    )
 
 
 @app.post("/api/products/{product_id}/ai/preview")
@@ -228,7 +312,12 @@ async def ai_preview(product_id: str, request: Request, db: Session = Depends(ge
         pack = parse_pack(body.get("text", ""), product.ai_request_id)
     except Exception as exc:
         raise HTTPException(422, str(exc)) from exc
-    return {"ok": True, "pack": pack.model_dump(), "needs_confirmation": [x.model_dump() for x in pack.needs_confirmation], "assumptions": [x.model_dump() for x in pack.assumptions]}
+    return {
+        "ok": True,
+        "pack": pack.model_dump(),
+        "needs_confirmation": [item.model_dump() for item in pack.needs_confirmation],
+        "assumptions": [item.model_dump() for item in pack.assumptions],
+    }
 
 
 @app.post("/api/products/{product_id}/ai/import")
@@ -246,8 +335,12 @@ async def ai_import(product_id: str, request: Request, db: Session = Depends(get
 @app.get("/publications", response_class=HTMLResponse)
 def publications_page(request: Request, db: Session = Depends(get_db)):
     publications = list(db.scalars(select(Publication).order_by(Publication.created_at.desc())))
-    products = {p.id: p for p in db.scalars(select(Product))}
-    return templates.TemplateResponse(request, "publications.html", {"publications": publications, "products": products})
+    products = {product.id: product for product in db.scalars(select(Product))}
+    return templates.TemplateResponse(
+        request,
+        "publications.html",
+        {"publications": publications, "products": products},
+    )
 
 
 @app.post("/products/{product_id}/publications")
@@ -257,18 +350,104 @@ def publication_create(
     media_ids: list[str] = Form(default=[]),
     scheduled_at: str = Form(default=""),
     action: str = Form(default="draft"),
+    tiktok_creator_checked: bool = Form(default=False),
+    tiktok_title: str = Form(default=""),
+    tiktok_caption: str = Form(default=""),
+    tiktok_privacy_level: str = Form(default=""),
+    tiktok_disable_comment: bool = Form(default=False),
+    tiktok_disable_duet: bool = Form(default=False),
+    tiktok_disable_stitch: bool = Form(default=False),
+    tiktok_commercial_content_toggle: bool = Form(default=False),
+    tiktok_brand_organic_toggle: bool = Form(default=False),
+    tiktok_brand_content_toggle: bool = Form(default=False),
+    tiktok_is_aigc: bool = Form(default=False),
+    tiktok_auto_add_music: bool = Form(default=False),
+    tiktok_direct_post_consent: bool = Form(default=False),
+    youtube_title: str = Form(default=""),
+    youtube_description: str = Form(default=""),
+    youtube_privacy_status: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
     product = product_or_404(db, product_id)
+    selected_channels = list(dict.fromkeys(channels or ["demo"]))
     try:
-        when = parse_local_datetime(scheduled_at, settings.app_timezone)
+        requested_time = parse_local_datetime(scheduled_at, settings.app_timezone)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    publication = create_publication(db, product, channels or ["demo"], media_ids, when)
-    if action == "publish":
-        publication.status = PublicationStatus.scheduled.value
-        publication.scheduled_at = datetime.now(UTC)
-        db.commit()
+
+    selected_media = [item for item in product.media if item.id in set(media_ids)]
+    overrides: dict[str, dict] = {}
+
+    if "tiktok" in selected_channels:
+        if not selected_media:
+            raise HTTPException(422, "Для TikTok выберите фото или видео")
+        if not tiktok_creator_checked:
+            raise HTTPException(422, "Сначала обновите сведения о подключённом TikTok аккаунте")
+        if not tiktok_privacy_level.strip():
+            raise HTTPException(422, "Выберите видимость TikTok")
+        if not tiktok_direct_post_consent:
+            raise HTTPException(422, "Подтвердите отправку материалов в TikTok")
+        if tiktok_commercial_content_toggle and not (
+            tiktok_brand_organic_toggle or tiktok_brand_content_toggle
+        ):
+            raise HTTPException(
+                422,
+                "Для коммерческого контента выберите свой бренд, сторонний бренд или оба",
+            )
+        if not tiktok_commercial_content_toggle and (
+            tiktok_brand_organic_toggle or tiktok_brand_content_toggle
+        ):
+            raise HTTPException(422, "Включите декларацию коммерческого контента TikTok")
+        if tiktok_brand_content_toggle and tiktok_privacy_level == "SELF_ONLY":
+            raise HTTPException(
+                422,
+                "Платное партнёрство TikTok нельзя публиковать с видимостью «Только я»",
+            )
+        current = dict((product.channel_content or {}).get("tiktok") or {})
+        overrides["tiktok"] = {
+            "title": tiktok_title.strip() or current.get("title", ""),
+            "caption": tiktok_caption.strip() or current.get("caption", ""),
+            "privacy_level": tiktok_privacy_level.strip(),
+            "disable_comment": tiktok_disable_comment,
+            "disable_duet": tiktok_disable_duet,
+            "disable_stitch": tiktok_disable_stitch,
+            "commercial_content_toggle": tiktok_commercial_content_toggle,
+            "brand_organic_toggle": tiktok_brand_organic_toggle,
+            "brand_content_toggle": tiktok_brand_content_toggle,
+            "is_aigc": tiktok_is_aigc,
+            "auto_add_music": tiktok_auto_add_music,
+            "direct_post_consent": True,
+        }
+
+    if "youtube" in selected_channels:
+        if len(selected_media) != 1 or selected_media[0].media_type != "video":
+            raise HTTPException(422, "Для YouTube выберите ровно одно видео")
+        current = dict((product.channel_content or {}).get("youtube") or {})
+        effective_title = youtube_title.strip() or current.get("title") or product.name
+        privacy = youtube_privacy_status.strip().lower()
+        if not effective_title:
+            raise HTTPException(422, "Укажите заголовок YouTube")
+        if privacy not in {"private", "unlisted", "public"}:
+            raise HTTPException(422, "Выберите видимость YouTube")
+        overrides["youtube"] = {
+            "title": effective_title,
+            "description": youtube_description or current.get("description", ""),
+            "tags": current.get("tags") or [],
+            "privacy_status": privacy,
+        }
+
+    publish_at = requested_time or (datetime.now(UTC) if action == "publish" else None)
+    try:
+        create_publication(
+            db,
+            product,
+            selected_channels,
+            media_ids,
+            publish_at,
+            overrides,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return RedirectResponse("/publications", status_code=303)
 
 
@@ -296,24 +475,79 @@ async def publication_publish(publication_id: str, db: Session = Depends(get_db)
 
 @app.get("/connections", response_class=HTMLResponse)
 def connections_page(request: Request, db: Session = Depends(get_db)):
-    accounts = {a.provider: a for a in db.scalars(select(IntegrationAccount))}
+    accounts = {account.provider: account for account in db.scalars(select(IntegrationAccount))}
     providers = ["google", "pinterest", "tiktok", "meta", "vk", "telegram"]
-    return templates.TemplateResponse(request, "connections.html", {"accounts": accounts, "providers": providers})
+    integrations = []
+    for provider in providers:
+        account = accounts.get(provider)
+        integrations.append(
+            {
+                "provider": provider,
+                "label": PROVIDER_LABELS[provider],
+                "account": account,
+                "status_label": STATUS_LABELS.get(
+                    account.status if account else "",
+                    "Не подключено",
+                ),
+                "fields": provider_config_fields(provider),
+                "config": public_provider_config(db, settings, provider),
+                "channels": [
+                    {"name": channel, "label": CHANNEL_LABELS.get(channel, channel)}
+                    for channel in CHANNELS_BY_PROVIDER.get(provider, ())
+                ],
+            }
+        )
+    return templates.TemplateResponse(
+        request,
+        "connections.html",
+        {"integrations": integrations},
+    )
+
+
+async def _save_integration_config(
+    provider: str,
+    request: Request,
+    db: Session,
+) -> dict:
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, "Ожидался JSON") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Ожидался JSON-объект")
+    metadata = {item["name"]: item for item in provider_config_fields(provider)}
+    normalized = dict(body)
+    for name, field in metadata.items():
+        if name in normalized and field.get("type") == "checkbox":
+            normalized[name] = _bool_value(normalized[name])
+    try:
+        account = merge_provider_config(db, settings, provider, normalized)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "ok": True,
+        "status": account.status,
+        "config": public_provider_config(db, settings, provider),
+    }
 
 
 @app.post("/api/integrations/telegram")
 async def save_telegram(request: Request, db: Session = Depends(get_db)):
-    body = await request.json()
-    if not body.get("bot_token") or not body.get("chat_id"):
-        raise HTTPException(422, "Нужны bot_token и chat_id")
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == "telegram", IntegrationAccount.account_key == "default"))
-    if not account:
-        account = IntegrationAccount(provider="telegram", account_key="default")
-        db.add(account)
-    account.encrypted_credentials = CredentialCipher(settings).encrypt_json({"bot_token": body["bot_token"], "chat_id": body["chat_id"]})
-    account.status = "connected"
-    db.commit()
-    return {"ok": True}
+    return await _save_integration_config("telegram", request, db)
+
+
+@app.post("/api/integrations/{provider}/config")
+async def integration_config(
+    provider: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return await _save_integration_config(provider, request, db)
+
+
+@app.get("/api/integrations/{channel}/health")
+async def integration_health(channel: str, db: Session = Depends(get_db)):
+    return await channel_health(db, settings, channel)
 
 
 @app.get("/api/oauth/{provider}/start")
@@ -326,7 +560,13 @@ def oauth_start(provider: str, db: Session = Depends(get_db)):
 
 
 @app.get("/oauth/{provider}/callback")
-async def oauth_callback(provider: str, code: str | None = None, state: str | None = None, error: str | None = None, db: Session = Depends(get_db)):
+async def oauth_callback(
+    provider: str,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
     if error:
         return RedirectResponse(f"/connections?error={error}", status_code=303)
     if not code or not state:
@@ -340,7 +580,12 @@ async def oauth_callback(provider: str, code: str | None = None, state: str | No
 
 @app.post("/api/integrations/{provider}/refresh")
 async def integration_refresh(provider: str, db: Session = Depends(get_db)):
-    account = db.scalar(select(IntegrationAccount).where(IntegrationAccount.provider == provider, IntegrationAccount.account_key == "default"))
+    account = db.scalar(
+        select(IntegrationAccount).where(
+            IntegrationAccount.provider == provider,
+            IntegrationAccount.account_key == "default",
+        )
+    )
     if not account:
         raise HTTPException(404)
     try:
@@ -361,7 +606,10 @@ def local_media(asset_id: str, db: Session = Depends(get_db)):
     asset = db.get(MediaAsset, asset_id)
     if not asset:
         raise HTTPException(404)
-    return FileResponse(safe_media_path(settings.media_dir, asset.stored_filename), media_type=asset.mime_type)
+    return FileResponse(
+        safe_media_path(settings.media_dir, asset.stored_filename),
+        media_type=asset.mime_type,
+    )
 
 
 @app.get("/api/media/{asset_id}/public-url")
@@ -369,7 +617,10 @@ def public_media_url(asset_id: str, db: Session = Depends(get_db)):
     if not db.get(MediaAsset, asset_id):
         raise HTTPException(404)
     token = sign_media_token(settings, asset_id)
-    return {"url": f"{settings.app_base_url.rstrip('/')}/media/public/{token}", "ttl_seconds": settings.signed_media_ttl_seconds}
+    return {
+        "url": f"{settings.app_base_url.rstrip('/')}/media/public/{token}",
+        "ttl_seconds": settings.signed_media_ttl_seconds,
+    }
 
 
 @app.get("/media/public/{token}")
@@ -381,7 +632,10 @@ def public_media(token: str, db: Session = Depends(get_db)):
     asset = db.get(MediaAsset, asset_id)
     if not asset:
         raise HTTPException(404)
-    return FileResponse(safe_media_path(settings.media_dir, asset.stored_filename), media_type=asset.mime_type)
+    return FileResponse(
+        safe_media_path(settings.media_dir, asset.stored_filename),
+        media_type=asset.mime_type,
+    )
 
 
 @app.get("/webhooks/meta")
@@ -389,7 +643,11 @@ def meta_webhook_verify(request: Request):
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
-    if mode == "subscribe" and settings.webhook_verify_token and hmac.compare_digest(token or "", settings.webhook_verify_token):
+    if (
+        mode == "subscribe"
+        and settings.webhook_verify_token
+        and hmac.compare_digest(token or "", settings.webhook_verify_token)
+    ):
         return HTMLResponse(challenge or "")
     raise HTTPException(403)
 
@@ -401,7 +659,11 @@ async def webhook(provider: str, request: Request, db: Session = Depends(get_db)
         raise HTTPException(413)
     if provider == "meta" and settings.meta_webhook_secret:
         supplied = request.headers.get("x-hub-signature-256", "")
-        expected = "sha256=" + hmac.new(settings.meta_webhook_secret.encode(), raw, hashlib.sha256).hexdigest()
+        expected = "sha256=" + hmac.new(
+            settings.meta_webhook_secret.encode(),
+            raw,
+            hashlib.sha256,
+        ).hexdigest()
         if not hmac.compare_digest(supplied, expected):
             raise HTTPException(403, "invalid webhook signature")
     try:
@@ -409,7 +671,11 @@ async def webhook(provider: str, request: Request, db: Session = Depends(get_db)
     except json.JSONDecodeError as exc:
         raise HTTPException(400, "invalid JSON") from exc
     external_id = request.headers.get("x-event-id") or hashlib.sha256(raw).hexdigest()
-    event = WebhookEvent(provider=provider, external_event_id=external_id, payload=payload)
+    event = WebhookEvent(
+        provider=provider,
+        external_event_id=external_id,
+        payload=payload,
+    )
     db.add(event)
     try:
         db.commit()

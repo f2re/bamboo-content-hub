@@ -20,23 +20,54 @@ PROVIDER_CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "pinterest": ("board_id", "board_section_id"),
     "vk": ("owner_id",),
     "meta": ("instagram_user_id", "facebook_page_id"),
-    "tiktok": ("privacy_level", "disable_comment", "disable_duet", "disable_stitch"),
-    "google": ("youtube_privacy_status", "youtube_category_id"),
+    "tiktok": (),
+    "google": ("youtube_category_id",),
 }
 CONFIG_FIELD_META: dict[str, dict] = {
-    "bot_token": {"label": "Токен бота", "type": "password", "placeholder": "123456:ABC…"},
-    "chat_id": {"label": "Канал / chat ID", "type": "text", "placeholder": "@bamboopottery"},
-    "board_id": {"label": "Доска Pinterest", "type": "text", "placeholder": "ID доски"},
-    "board_section_id": {"label": "Раздел доски", "type": "text", "placeholder": "необязательно"},
-    "owner_id": {"label": "Стена VK", "type": "text", "placeholder": "ID пользователя или -ID сообщества"},
-    "instagram_user_id": {"label": "Instagram Professional ID", "type": "text", "placeholder": "ID профессионального аккаунта"},
-    "facebook_page_id": {"label": "Facebook Page ID", "type": "text", "placeholder": "ID страницы"},
-    "privacy_level": {"label": "Видимость TikTok", "type": "text", "placeholder": "PUBLIC_TO_EVERYONE"},
-    "disable_comment": {"label": "Отключить комментарии TikTok", "type": "checkbox"},
-    "disable_duet": {"label": "Отключить Duet", "type": "checkbox"},
-    "disable_stitch": {"label": "Отключить Stitch", "type": "checkbox"},
-    "youtube_privacy_status": {"label": "Видимость YouTube", "type": "text", "placeholder": "private / unlisted / public"},
-    "youtube_category_id": {"label": "Категория YouTube", "type": "text", "placeholder": "22"},
+    "bot_token": {
+        "label": "Токен бота",
+        "type": "password",
+        "placeholder": "123456:ABC…",
+        "help": "Создайте бота через BotFather и добавьте его администратором канала.",
+    },
+    "chat_id": {
+        "label": "Канал / chat ID",
+        "type": "text",
+        "placeholder": "@bamboopottery",
+    },
+    "board_id": {
+        "label": "Доска Pinterest",
+        "type": "text",
+        "placeholder": "ID доски",
+        "required": True,
+    },
+    "board_section_id": {
+        "label": "Раздел доски",
+        "type": "text",
+        "placeholder": "необязательно",
+    },
+    "owner_id": {
+        "label": "Стена VK",
+        "type": "text",
+        "placeholder": "ID пользователя или -ID сообщества",
+        "required": True,
+    },
+    "instagram_user_id": {
+        "label": "Instagram Professional ID",
+        "type": "text",
+        "placeholder": "ID профессионального аккаунта",
+    },
+    "facebook_page_id": {
+        "label": "Facebook Page ID",
+        "type": "text",
+        "placeholder": "ID страницы",
+    },
+    "youtube_category_id": {
+        "label": "Категория YouTube",
+        "type": "text",
+        "placeholder": "22",
+        "help": "По умолчанию используется категория 22 (People & Blogs).",
+    },
 }
 SECRET_CONFIG_FIELDS = {"bot_token"}
 
@@ -73,15 +104,21 @@ def merge_provider_config(
     values: dict,
 ) -> IntegrationAccount:
     allowed = PROVIDER_CONFIG_FIELDS.get(provider)
-    if not allowed:
-        raise ValueError("Для этой интеграции нет пользовательских настроек")
+    if allowed is None:
+        raise ValueError("Неизвестная интеграция")
     unknown = set(values) - set(allowed)
     if unknown:
         raise ValueError(f"Неизвестные поля интеграции: {', '.join(sorted(unknown))}")
+    if not allowed:
+        raise ValueError("Для этой интеграции нет постоянных пользовательских настроек")
 
     account = provider_account(db, provider)
     if not account:
-        account = IntegrationAccount(provider=provider, account_key="default", status="configured")
+        account = IntegrationAccount(
+            provider=provider,
+            account_key="default",
+            status="configured",
+        )
         db.add(account)
         db.flush()
 
@@ -102,7 +139,11 @@ def merge_provider_config(
             credentials[key] = value
     account.encrypted_credentials = CredentialCipher(settings).encrypt_json(credentials)
     if provider == "telegram":
-        account.status = "connected" if credentials.get("bot_token") and credentials.get("chat_id") else "configured"
+        account.status = (
+            "connected"
+            if credentials.get("bot_token") and credentials.get("chat_id")
+            else "configured"
+        )
     elif credentials.get("access_token"):
         account.status = "connected"
     else:

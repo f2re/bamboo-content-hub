@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -16,7 +17,13 @@ from .models import Delivery, DeliveryStatus, MediaAsset, Product, Publication, 
 from .security import detect_media_mime, safe_media_extension, safe_media_path
 
 
-async def save_upload(db: Session, settings: Settings, product: Product, upload: UploadFile, sort_order: int) -> MediaAsset:
+async def save_upload(
+    db: Session,
+    settings: Settings,
+    product: Product,
+    upload: UploadFile,
+    sort_order: int,
+) -> MediaAsset:
     content = await upload.read(settings.max_upload_bytes + 1)
     if len(content) > settings.max_upload_bytes:
         raise ValueError("file exceeds upload limit")
@@ -48,11 +55,16 @@ def apply_ai_pack(db: Session, product: Product, pack: BambooContentPack) -> Pro
     product.sku = product.sku or incoming.get("sku")
     product.product_type = product.product_type or incoming.get("product_type")
     product.collection = product.collection or incoming.get("collection")
-    product.description = product.description or pack.content.full_description or pack.content.short_description
+    product.description = (
+        product.description or pack.content.full_description or pack.content.short_description
+    )
     product.facts = deep_fill(product.facts or {}, incoming)
     product.channel_content = deep_fill(product.channel_content or {}, pack.channels.model_dump())
     product.ai_request_id = pack.request_id
-    by_image = {f"image_{i + 1}": asset for i, asset in enumerate(sorted(product.media, key=lambda m: m.sort_order))}
+    by_image = {
+        f"image_{i + 1}": asset
+        for i, asset in enumerate(sorted(product.media, key=lambda m: m.sort_order))
+    }
     for image in pack.media.images:
         asset = by_image.get(image.id)
         if asset:
@@ -67,22 +79,34 @@ def apply_ai_pack(db: Session, product: Product, pack: BambooContentPack) -> Pro
     return product
 
 
-def create_publication(db: Session, product: Product, channels: list[str], media_ids: list[str], scheduled_at: datetime | None = None) -> Publication:
+def create_publication(
+    db: Session,
+    product: Product,
+    channels: list[str],
+    media_ids: list[str],
+    scheduled_at: datetime | None = None,
+    channel_overrides: dict[str, dict] | None = None,
+) -> Publication:
     valid_media = {m.id for m in product.media}
     unknown = set(media_ids) - valid_media
     if unknown:
         raise ValueError("publication contains media from another product")
     status = PublicationStatus.scheduled.value if scheduled_at else PublicationStatus.draft.value
+    content = deepcopy(product.channel_content or {})
+    for channel, values in (channel_overrides or {}).items():
+        current = dict(content.get(channel) or {})
+        current.update(values)
+        content[channel] = current
     publication = Publication(
         product_id=product.id,
         status=status,
         scheduled_at=scheduled_at,
         selected_media_ids=media_ids,
-        channel_content=product.channel_content or {},
+        channel_content=content,
     )
     db.add(publication)
     db.flush()
-    for channel in channels:
+    for channel in dict.fromkeys(channels):
         key = hashlib.sha256(f"{publication.id}:{channel}".encode()).hexdigest()
         db.add(Delivery(publication_id=publication.id, channel=channel, idempotency_key=key))
     db.commit()
@@ -102,7 +126,9 @@ def parse_local_datetime(value: str, timezone_name: str) -> datetime | None:
     local = parsed.replace(tzinfo=zone, fold=0)
     roundtrip = local.astimezone(UTC).astimezone(zone).replace(tzinfo=None)
     if roundtrip != parsed:
-        raise ValueError("Выбранное местное время не существует из-за перехода на летнее/зимнее время")
+        raise ValueError(
+            "Выбранное местное время не существует из-за перехода на летнее/зимнее время"
+        )
     return local.astimezone(UTC)
 
 
@@ -119,11 +145,7 @@ def retry_delay(attempt: int) -> timedelta:
 
 
 def claim_delivery(db: Session, delivery_id: str, lease_seconds: int) -> Delivery | None:
-    """Atomically claim one due delivery.
-
-    `next_attempt_at` doubles as a lease deadline while status=processing. This keeps
-    the schema small while allowing stale jobs to be recovered after a worker crash.
-    """
+    """Atomically claim one due delivery using next_attempt_at as the lease deadline."""
     now = datetime.now(UTC)
     lease_until = now + timedelta(seconds=max(30, lease_seconds))
     due_retry = and_(
