@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .config import get_settings
 
 
 class StrictModel(BaseModel):
@@ -145,6 +149,9 @@ class Media(StrictModel):
 class Confirmation(StrictModel):
     path: str
     question: str
+    value: Any = None
+    proof: str | None = None
+    confirmed: bool = False
 
 
 class Assumption(StrictModel):
@@ -176,7 +183,8 @@ EDITORIAL_GUIDE = """Правила подготовки контента:
 7. В hashtags записывай готовые хэштеги с символом #. В keywords и tags записывай слова/фразы без #.
 8. Не выдумывай URL. button_url и destination_url заполняй только если ссылка дана во входных данных; иначе оставляй пустую строку.
 9. Параметры публикации и согласия, которые должен выбрать человек, не угадывай. В частности, channels.tiktok.privacy оставляй null.
-10. Для media используй только переданные идентификаторы image_1...N; не создавай несуществующие ссылки. alt_text должен кратко и фактически описывать медиа для доступности."""
+10. Для media используй только переданные идентификаторы image_1...N; не создавай несуществующие ссылки. alt_text должен кратко и фактически описывать медиа для доступности.
+11. Поля needs_confirmation[].value/proof/confirmed служебные: никогда не заполняй value/proof и всегда оставляй confirmed=false. Их добавляет Bamboo Content Hub после проверки ответа."""
 
 
 CHANNEL_GUIDE = {
@@ -188,6 +196,21 @@ CHANNEL_GUIDE = {
     "tiktok": "TikTok — caption: короткая подпись с ясным первым смысловым акцентом; hashtags: несколько точных; privacy всегда null — видимость и коммерческие декларации выбирает человек перед публикацией.",
     "youtube": "YouTube — title: конкретный заголовок; description: фактическое описание изделия/процесса; tags без #. Не утверждай, что в видео показано то, чего нельзя подтвердить по переданному медиа.",
     "livemaster": "Ярмарка мастеров — title, short_description и description: полноценная карточка изделия на основе подтверждённых фактов; keywords без #; category_suggestion только как рекомендация.",
+}
+
+CRITICAL_CONFIRMATION_FIELDS: dict[str, str] = {
+    "price.amount": "цену",
+    "materials": "материалы",
+    "glaze": "глазурь",
+    "firing": "режим обжига",
+    "dimensions.height_mm": "высоту",
+    "dimensions.diameter_mm": "диаметр",
+    "dimensions.volume_ml": "объём",
+    "dimensions.weight_g": "массу",
+    "care.dishwasher": "возможность мыть в посудомоечной машине",
+    "care.microwave": "возможность использовать в микроволновой печи",
+    "care.food_safe": "безопасность контакта с пищей",
+    "availability": "наличие",
 }
 
 
@@ -205,11 +228,92 @@ def extract_json(text: str) -> dict:
     return obj
 
 
+def _nested_get(data: dict, path: str) -> Any:
+    current: Any = data
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _product_path_set(product: ProductPack, path: str, value: Any) -> None:
+    current: Any = product
+    parts = path.split(".")
+    for part in parts[:-1]:
+        current = getattr(current, part)
+    setattr(current, parts[-1], value)
+
+
+def _empty_value(value: Any) -> Any:
+    return [] if isinstance(value, list) else None
+
+
+def _has_value(value: Any) -> bool:
+    return value not in (None, "", [], {})
+
+
+def _display_confirmation_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "да" if value else "нет"
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _confirmation_proof(request_id: str, path: str, value: Any) -> str:
+    canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload = f"{request_id}\n{path}\n{canonical}".encode()
+    return hmac.new(get_settings().secret_key.encode(), payload, hashlib.sha256).hexdigest()
+
+
+def _protect_critical_confirmations(pack: BambooContentPack) -> BambooContentPack:
+    incoming = pack.product.model_dump()
+    by_path = {item.path: item for item in pack.needs_confirmation}
+    for relative_path, label in CRITICAL_CONFIRMATION_FIELDS.items():
+        path = f"product.{relative_path}"
+        model_value = _nested_get(incoming, relative_path)
+        item = by_path.get(path)
+
+        # A value returned from a previous preview is accepted only with the server proof.
+        if item and item.proof and _has_value(item.value):
+            expected = _confirmation_proof(pack.request_id, path, item.value)
+            if hmac.compare_digest(item.proof, expected):
+                if item.confirmed:
+                    _product_path_set(pack.product, relative_path, item.value)
+                else:
+                    _product_path_set(pack.product, relative_path, _empty_value(item.value))
+                continue
+
+        if not _has_value(model_value):
+            continue
+
+        proof = _confirmation_proof(pack.request_id, path, model_value)
+        question = f"Подтвердите {label}: {_display_confirmation_value(model_value)}"
+        if item:
+            item.question = question
+            item.value = model_value
+            item.proof = proof
+            item.confirmed = False
+        else:
+            item = Confirmation(
+                path=path,
+                question=question,
+                value=model_value,
+                proof=proof,
+                confirmed=False,
+            )
+            pack.needs_confirmation.append(item)
+            by_path[path] = item
+        _product_path_set(pack.product, relative_path, _empty_value(model_value))
+    return pack
+
+
 def parse_pack(text: str, expected_request_id: str | None = None) -> BambooContentPack:
     pack = BambooContentPack.model_validate(extract_json(text))
     if expected_request_id and pack.request_id != expected_request_id:
         raise ValueError("request_id does not match this product draft")
-    return pack
+    return _protect_critical_confirmations(pack)
 
 
 def deep_fill(existing: Any, incoming: Any) -> Any:
@@ -225,6 +329,7 @@ def deep_fill(existing: Any, incoming: Any) -> Any:
 def build_prompt(request_id: str, image_count: int, known: dict, channels: list[str]) -> str:
     image_names = ", ".join(f"image_{i}" for i in range(1, image_count + 1)) or "нет медиа"
     schema = json.dumps(BambooContentPack.model_json_schema(), ensure_ascii=False, indent=2)
+    known = {key: value for key, value in known.items() if not str(key).startswith("_")}
     known_json = json.dumps(known, ensure_ascii=False, indent=2)
     channel_text = ", ".join(channels)
     channel_rules = "\n".join(
